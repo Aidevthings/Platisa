@@ -40,8 +40,8 @@
 }
 
 # --- Hilt / Dagger ---
--keep class com.example.platisa.PlatisaApplication_HiltComponents { *; }
--keep class com.example.platisa.di.** { *; }
+-keep class com.platisa.app.PlatisaApplication_HiltComponents { *; }
+-keep class com.platisa.app.di.** { *; }
 
 # --- Retrofit / OkHttp / Gson ---
 # Retrofit
@@ -57,7 +57,7 @@
 -keep class sun.misc.Unsafe { *; }
 -keep class com.google.gson.stream.** { *; }
 # Keep data classes that are used for serialization/deserialization
--keep class com.example.platisa.core.data.model.** { *; }
+-keep class com.platisa.app.core.data.model.** { *; }
 
 # --- ML Kit / CameraX ---
 # Usually R8 handles these well, but keeping them safe just in case

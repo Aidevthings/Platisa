@@ -1,4 +1,4 @@
-package com.example.platisa.core.data.parser
+package com.platisa.app.core.data.parser
 
 import org.junit.Assert.*
 import org.junit.Before
@@ -562,3 +562,4 @@ class EpsParserTest {
         assertFalse(result.isStorno)
     }
 }
+

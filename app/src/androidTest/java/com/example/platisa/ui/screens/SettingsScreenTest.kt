@@ -1,9 +1,9 @@
-package com.example.platisa.ui.screens
+package com.platisa.app.ui.screens
 
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.example.platisa.MainActivity
+import com.platisa.app.MainActivity
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
 import org.junit.Rule
@@ -32,3 +32,4 @@ class SettingsScreenTest {
         composeTestRule.waitForIdle()
     }
 }
+

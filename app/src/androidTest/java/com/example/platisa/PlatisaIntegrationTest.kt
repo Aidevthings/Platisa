@@ -1,4 +1,4 @@
-package com.example.platisa
+package com.platisa.app
 
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -126,3 +126,4 @@ class PlatisaIntegrationTest {
             .assertExists()
     }
 }
+

@@ -1,9 +1,9 @@
-package com.example.platisa.ui.navigation
+package com.platisa.app.ui.navigation
 
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.example.platisa.MainActivity
+import com.platisa.app.MainActivity
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -86,3 +86,4 @@ class NavigationTest {
             .assertIsEnabled()
     }
 }
+

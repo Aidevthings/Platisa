@@ -1,13 +1,13 @@
-package com.example.platisa.ui.screens
+package com.platisa.app.ui.screens
 
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.example.platisa.core.domain.model.PaymentStatus
-import com.example.platisa.core.domain.model.Receipt
-import com.example.platisa.ui.screens.billdetails.BillDetailsContent
-import com.example.platisa.ui.screens.billdetails.BillType
-import com.example.platisa.ui.theme.PlatisaTheme
+import com.platisa.app.core.domain.model.PaymentStatus
+import com.platisa.app.core.domain.model.Receipt
+import com.platisa.app.ui.screens.billdetails.BillDetailsContent
+import com.platisa.app.ui.screens.billdetails.BillType
+import com.platisa.app.ui.theme.PlatisaTheme
 import androidx.navigation.testing.TestNavHostController
 import androidx.compose.ui.platform.LocalContext
 import org.junit.Rule
@@ -223,3 +223,4 @@ class BillDetailsScreenTest {
             .assertExists()
     }
 }
+

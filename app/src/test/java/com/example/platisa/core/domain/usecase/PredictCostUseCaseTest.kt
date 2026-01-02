@@ -1,9 +1,9 @@
-package com.example.platisa.core.domain.usecase
+package com.platisa.app.core.domain.usecase
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import com.example.platisa.core.domain.model.EpsMonthData
+import com.platisa.app.core.domain.model.EpsMonthData
 import java.math.BigDecimal
 
 class PredictCostUseCaseTest {
@@ -93,3 +93,4 @@ class PredictCostUseCaseTest {
         assertTrue(result.predictedAmount > BigDecimal("6000"))
     }
 }
+

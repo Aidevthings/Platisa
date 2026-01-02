@@ -11,11 +11,11 @@ plugins {
 }
 
 android {
-    namespace = "com.example.platisa"
+    namespace = "com.platisa.app"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.example.platisa"
+        applicationId = "com.platisa.app"
         minSdk = 26
         targetSdk = 34
         versionCode = 2

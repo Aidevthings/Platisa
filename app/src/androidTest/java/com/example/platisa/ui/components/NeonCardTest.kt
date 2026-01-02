@@ -1,4 +1,4 @@
-package com.example.platisa.ui.components
+package com.platisa.app.ui.components
 
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -8,8 +8,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.dp
-import com.example.platisa.ui.theme.PlatisaTheme
-import com.example.platisa.ui.theme.NeonCyanHome
+import com.platisa.app.ui.theme.PlatisaTheme
+import com.platisa.app.ui.theme.NeonCyanHome
 import org.junit.Rule
 import org.junit.Test
 
@@ -109,3 +109,4 @@ class NeonCardTest {
             .assertIsDisplayed()
     }
 }
+

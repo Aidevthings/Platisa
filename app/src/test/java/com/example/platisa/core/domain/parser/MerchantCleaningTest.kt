@@ -1,4 +1,4 @@
-package com.example.platisa.core.domain.parser
+package com.platisa.app.core.domain.parser
 
 import org.junit.Test
 import org.junit.Assert.*
@@ -27,3 +27,4 @@ class MerchantCleaningTest {
         return cleaned.trim()
     }
 }
+

@@ -1,4 +1,4 @@
-package com.example.platisa.core.data.database.entity
+package com.platisa.app.core.data.database.entity
 
 import org.junit.Assert.*
 import org.junit.Test
@@ -329,3 +329,4 @@ class ReceiptEntityTest {
         assertTrue(receipt.isStorno)
     }
 }
+

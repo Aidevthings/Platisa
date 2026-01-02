@@ -1,4 +1,4 @@
-package com.example.platisa.core.domain.parser
+package com.platisa.app.core.domain.parser
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -72,3 +72,4 @@ class ReceiptParserTest {
         assertEquals(BigDecimal("60.00"), result.items[1].unitPrice)
     }
 }
+

@@ -1,4 +1,4 @@
-package com.example.platisa.core.common
+package com.platisa.app.core.common
 
 import org.junit.Assert.*
 import org.junit.Test
@@ -221,3 +221,4 @@ class FormattersExtendedTest {
         assertEquals("1.000", result)
     }
 }
+

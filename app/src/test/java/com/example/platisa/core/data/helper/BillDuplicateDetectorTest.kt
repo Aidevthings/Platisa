@@ -1,10 +1,10 @@
-package com.example.platisa.core.data.helper
+package com.platisa.app.core.data.helper
 
-import com.example.platisa.core.data.database.dao.ReceiptDao
-import com.example.platisa.core.data.database.entity.PaymentStatus
-import com.example.platisa.core.data.database.entity.ReceiptEntity
-import com.example.platisa.core.data.database.entity.SourceType
-import com.example.platisa.core.data.database.entity.SyncStatus
+import com.platisa.app.core.data.database.dao.ReceiptDao
+import com.platisa.app.core.data.database.entity.PaymentStatus
+import com.platisa.app.core.data.database.entity.ReceiptEntity
+import com.platisa.app.core.data.database.entity.SourceType
+import com.platisa.app.core.data.database.entity.SyncStatus
 import io.mockk.*
 import io.mockk.impl.annotations.MockK
 import kotlinx.coroutines.test.runTest
@@ -365,3 +365,4 @@ class BillDuplicateDetectorTest {
         assertTrue("Should skip self when updating", result is DuplicateCheckResult.NoDuplicate)
     }
 }
+

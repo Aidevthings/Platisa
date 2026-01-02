@@ -1,4 +1,4 @@
-package com.example.platisa
+package com.platisa.app
 
 import org.junit.Test
 

@@ -1,4 +1,4 @@
-package com.example.platisa.core.domain.model
+package com.platisa.app.core.domain.model
 
 import org.junit.Assert.*
 import org.junit.Test
@@ -363,3 +363,4 @@ class BillCategorizerTest {
         assertEquals("Ostalo", BillCategory.OTHER.displayName)
     }
 }
+

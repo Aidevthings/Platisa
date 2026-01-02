@@ -1,4 +1,4 @@
-package com.example.platisa.core.common
+package com.platisa.app.core.common
 
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -36,3 +36,4 @@ class FormattersTest {
         assertEquals("01.01.2025", formatted)
     }
 }
+

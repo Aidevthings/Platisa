@@ -1,4 +1,4 @@
-package com.example.platisa.ui.theme
+package com.platisa.app.ui.theme
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -142,3 +142,4 @@ class ThemeTest {
             .assertIsDisplayed()
     }
 }
+

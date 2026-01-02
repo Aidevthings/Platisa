@@ -1,4 +1,4 @@
-package com.example.platisa.core.data.parser
+package com.platisa.app.core.data.parser
 
 import org.junit.Assert.*
 import org.junit.Test
@@ -195,3 +195,4 @@ class IpsParserTest {
         assertEquals(BigDecimal("2890.00"), result.amount)
     }
 }
+

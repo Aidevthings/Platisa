@@ -1,4 +1,4 @@
-package com.example.platisa.core.data.helper
+package com.platisa.app.core.data.helper
 
 import org.junit.Assert.*
 import org.junit.Test
@@ -231,3 +231,4 @@ class StringNormalizationTest {
         assertNotEquals(latin, cyrillic)
     }
 }
+
