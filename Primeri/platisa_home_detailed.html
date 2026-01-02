@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Platiša - Home Screen</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script>
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            "primary": "#00eaff",
+            "background-light": "#f6f6f8",
+            "background-dark": "#111217",
+            "neon-cyan": "#00eaff",
+            "neon-magenta": "#ff00d9",
+            "neon-lime": "#aaff00",
+            "neon-green": "#39ff14",
+          },
+          fontFamily: {
+            "display": ["Manrope", "sans-serif"],
+            "futuristic": ["Orbitron", "sans-serif"],
+          },
+          borderRadius: {
+            "DEFAULT": "0.5rem",
+            "lg": "0.75rem",
+            "xl": "1rem",
+            "2xl": "1.25rem",
+            "full": "9999px"
+          },
+          boxShadow: {
+            'glass-inset': 'inset 0 1px 1px 0 rgb(255 255 255 / 0.1), inset 0 -1px 1px 0 rgb(0 0 0 / 0.2)',
+          }
+        },
+      },
+    }
+  </script>
+<style>
+    .material-symbols-outlined {
+      font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+    }
+    body {
+      min-height: max(884px, 100dvh);
+    }
+    .ambient-glow-camera::before {
+        content: '';
+        position: absolute;
+        inset: -20px;
+        background: radial-gradient(circle at center, theme('colors.neon-cyan / 15%') 0%, theme('colors.neon-magenta / 15%') 80%, transparent 100%);
+        opacity: 0.5;
+        filter: blur(20px);
+        z-index: 1;
+        pointer-events: none;
+    }
+    .camera-active::after {
+        content: '';
+        position: absolute;
+        inset: -8px;
+        border-radius: 50%;
+        border: 3px solid #00eaff;
+        box-shadow: 0 0 20px #00eaff, 0 0 40px #00eaff, inset 0 0 20px rgba(0, 234, 255, 0.3);
+        animation: camera-pulse 1.5s ease-in-out infinite;
+        pointer-events: none;
+    }
+    @keyframes camera-pulse {
+        0%, 100% {
+            opacity: 1;
+            transform: scale(1);
+        }
+        50% {
+            opacity: 0.6;
+            transform: scale(1.05);
+        }
+    }
+    .neon-text-effect {
+        text-shadow: 0 0 5px rgba(255, 255, 255, 0.8), 0 0 10px rgba(255, 255, 255, 0.6), 0 0 15px rgba(255, 255, 255, 0.4), 0 0 20px theme('colors.neon-cyan'), 0 0 35px theme('colors.neon-cyan'), 0 0 40px theme('colors.neon-cyan'), 0 0 50px theme('colors.neon-cyan'), 0 0 75px theme('colors.neon-cyan');
+    }
+    .neon-text-effect-magenta {
+        text-shadow: 0 0 5px rgba(255, 255, 255, 0.8), 0 0 10px rgba(255, 255, 255, 0.6), 0 0 15px rgba(255, 255, 255, 0.4), 0 0 20px theme('colors.neon-magenta'), 0 0 35px theme('colors.neon-magenta'), 0 0 40px theme('colors.neon-magenta'), 0 0 50px theme('colors.neon-magenta'), 0 0 75px theme('colors.neon-magenta');
+    }.icon-container-3d-sharp {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 0.75rem;box-shadow: 
+        5px 5px 10px rgba(0, 0, 0, 0.6), 
+        -2px -2px 6px rgba(255, 255, 255, 0.1),
+        inset 1px 1px 2px rgba(255, 255, 255, 0.3),
+        inset -1px -1px 2px rgba(0, 0, 0, 0.5);
+      background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0) 100%);
+      transform-style: preserve-3d;
+      border: 1px solid rgba(255,255,255,0.15);
+      backdrop-filter: blur(4px);
+    }
+    .icon-container-3d-sharp::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 0.75rem;
+      background: linear-gradient(145deg, rgba(255, 255, 255, 0.2) 0%, transparent 40%, rgba(0, 0, 0, 0.3) 100%);
+      z-index: 1;
+      pointer-events: none;
+    }.icon-container-3d-sharp::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 40%;
+      background: linear-gradient(180deg, rgba(255,255,255,0.3) 0%, rgba(255,255,255,0) 100%);
+      border-top-left-radius: 0.75rem;
+      border-top-right-radius: 0.75rem;
+      z-index: 2;
+      pointer-events: none;
+      clip-path: polygon(0 0, 100% 0, 100% 15%, 0 100%);
+    }.icon-inner-sharp {
+      position: relative;
+      z-index: 10;
+      filter: drop-shadow(2px 4px 6px rgba(0,0,0,0.5));
+      transform: translateZ(10px);
+    }
+  </style>
+<style type="text/tailwindcss">
+    @layer utilities {
+        .conic-gradient {
+            background-image: conic-gradient(from 180deg at 50% 50%, theme('colors.neon-cyan') 0deg 180deg, theme('colors.neon-magenta') 180deg 360deg);
+        }
+        .conic-glow {
+            filter: drop-shadow(0 0 5px theme('colors.neon-cyan')) drop-shadow(0 0 10px theme('colors.neon-magenta'));
+        }
+    }
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="font-display">
+<div class="relative flex h-auto min-h-screen w-full flex-col bg-background-dark group/design-root overflow-x-hidden" style="max-width: 420px; margin: auto;">
+<div class="absolute top-0 left-0 h-96 w-full bg-gradient-to-br from-cyan-500/30 via-fuchsia-500/30 to-lime-500/30 blur-3xl"></div>
+<div class="flex items-center bg-background-dark/80 backdrop-blur-sm p-4 pb-2 justify-between sticky top-0 z-10 border-b border-white/10">
+<div class="relative p-[2px] rounded-full overflow-hidden bg-gradient-to-tr from-neon-cyan via-purple-500 to-neon-magenta shadow-[0_0_15px_rgba(0,234,255,0.4)]">
+<div class="absolute -inset-1 bg-gradient-to-br from-neon-cyan/60 to-neon-magenta/60 blur-lg opacity-50"></div>
+<div class="relative flex items-center justify-center size-12 bg-gray-900 rounded-full overflow-hidden ring-1 ring-white/10">
+<span class="material-symbols-outlined text-gray-400 p-2" style="font-size: 32px;">person</span>
+<div class="absolute inset-0 bg-gradient-to-tr from-neon-cyan/20 to-transparent mix-blend-overlay"></div>
+</div>
+</div>
+<div class="flex-1 ml-4 overflow-hidden">
+<h2 class="text-white text-lg font-bold leading-tight tracking-[-0.015em]">Zdravo, Alex!</h2>
+</div>
+<div class="flex items-center justify-end gap-2">
+<button class="relative group flex max-w-[480px] cursor-pointer items-center justify-center overflow-hidden rounded-full h-12 w-12 bg-transparent text-white/80 hover:text-white transition-colors">
+<div class="absolute inset-0 bg-neon-cyan/20 rounded-full blur-md opacity-75 group-hover:opacity-100 animate-pulse transition-all duration-300"></div>
+<span class="material-symbols-outlined text-3xl z-10 neon-text-effect">notifications</span>
+</button>
+<button class="relative group flex max-w-[480px] cursor-pointer items-center justify-center overflow-hidden rounded-full h-12 w-12 bg-transparent text-white/80 hover:text-white transition-colors">
+<div class="absolute inset-0 bg-neon-magenta/20 rounded-full blur-md opacity-75 group-hover:opacity-100 animate-pulse transition-all duration-300"></div>
+<span class="material-symbols-outlined text-3xl z-10 neon-text-effect">light_mode</span>
+</button>
+</div>
+</div>
+<div class="p-4 flex flex-col gap-6 z-0">
+<div class="relative p-px rounded-2xl overflow-hidden bg-gradient-to-br from-white/30 to-white/10 shadow-lg">
+<div class="absolute -inset-2 bg-gradient-to-br from-neon-cyan/50 to-neon-magenta/50 blur-2xl opacity-40"></div>
+<div class="grid grid-cols-2 gap-px bg-gradient-to-br from-white/20 to-white/5 rounded-[15px] overflow-hidden">
+<div class="relative flex flex-col gap-2 p-4 bg-black/40 backdrop-blur-xl min-h-[160px] justify-center items-center">
+<div class="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent"></div>
+<div class="relative z-10 text-center w-full px-2" style="max-width: 98%; filter: drop-shadow(0 0 10px theme('colors.neon-magenta'));">
+<div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+<h2 id="total-amount" class="font-futuristic font-bold text-white neon-text-effect-magenta" style="font-size: 3rem; display: inline-block; max-width: 100%;">12.549,00</h2>
+</div>
+<p class="text-sm text-gray-300 font-semibold tracking-wider neon-text-effect mt-1">Ukupno za plaćanje</p>
+</div>
+</div>
+<button class="relative group flex flex-col justify-center items-center gap-3 p-4 bg-black/40 backdrop-blur-xl min-h-[160px]">
+<div class="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent"></div>
+<div class="absolute -inset-px rounded-xl border border-transparent bg-gradient-to-br from-neon-cyan/50 to-neon-magenta/50 opacity-0 group-hover:opacity-60 transition-opacity duration-300"></div>
+<div class="relative flex items-center justify-center size-20 bg-background-dark/30 rounded-full border border-white/10 shadow-glass-inset z-10 backdrop-blur-sm ambient-glow-camera" id="camera-circle">
+<div class="absolute inset-0 rounded-full bg-gradient-to-br from-white/10 to-transparent"></div>
+<span class="material-symbols-outlined text-5xl text-white transition-all duration-300 group-hover:text-neon-cyan group-hover:scale-110 z-10 neon-text-effect" style="font-variation-settings: 'wght' 200;">photo_camera</span>
+</div>
+<p class="font-futuristic text-sm font-semibold text-white z-10 tracking-wider neon-text-effect">Slikaj Kamerom</p>
+</button>
+</div>
+</div>
+<h3 class="text-white text-xl font-bold leading-tight tracking-[-0.015em] neon-text-effect">Nedavni Računi</h3>
+<div class="flex flex-col gap-3">
+<div class="relative flex items-center gap-4 bg-neon-cyan/25 backdrop-blur-xl p-4 min-h-14 justify-between rounded-xl border border-white/10 shadow-glass-inset">
+<div class="absolute inset-0 rounded-xl bg-gradient-to-br from-white/10 to-transparent opacity-50"></div>
+<div class="absolute -inset-px rounded-xl border border-transparent bg-gradient-to-br from-neon-cyan/80 to-transparent opacity-80"></div>
+<div class="flex items-center gap-4 z-10">
+<div class="icon-container-3d-sharp bg-neon-cyan/60 shrink-0 size-14">
+<span class="material-symbols-outlined text-3xl text-white icon-inner-sharp" style="text-shadow: 0 0 10px rgba(0,234,255,0.8);">wifi</span>
+</div>
+<div class="flex flex-col">
+<p class="text-white text-lg font-bold leading-normal flex-1 truncate neon-text-effect">Internet Račun</p>
+<p class="text-gray-300 text-sm font-normal leading-normal neon-text-effect">Rok: 30 Nov 2023</p>
+</div>
+</div>
+<div class="flex flex-col items-end gap-1 z-10 text-right bill-amount-container">
+<p class="text-white font-bold leading-normal neon-text-effect bill-amount" style="font-size: 1.5rem !important;">7.950,00</p>
+</div>
+</div>
+<div class="relative flex items-center gap-4 bg-neon-cyan/25 backdrop-blur-xl p-4 min-h-14 justify-between rounded-xl border border-white/10 shadow-glass-inset">
+<div class="absolute inset-0 rounded-xl bg-gradient-to-br from-white/10 to-transparent opacity-50"></div>
+<div class="absolute -inset-px rounded-xl border border-transparent bg-gradient-to-br from-neon-cyan/80 to-transparent opacity-80"></div>
+<div class="flex items-center gap-4 z-10">
+<div class="icon-container-3d-sharp bg-neon-cyan/60 shrink-0 size-14">
+<span class="material-symbols-outlined text-3xl text-white icon-inner-sharp" style="text-shadow: 0 0 10px rgba(0,234,255,0.8);">water_drop</span>
+</div>
+<div class="flex flex-col">
+<p class="text-white text-lg font-bold leading-normal flex-1 truncate neon-text-effect">Voda</p>
+<p class="text-gray-300 text-sm font-normal leading-normal neon-text-effect">Rok: 12 Nov 2023</p>
+</div>
+</div>
+<div class="flex flex-col items-end gap-1 z-10 text-right bill-amount-container">
+<p class="text-white font-bold leading-normal neon-text-effect bill-amount">1.250,00</p>
+</div>
+</div>
+<div class="relative flex items-center gap-4 bg-neon-cyan/25 backdrop-blur-xl p-4 min-h-14 justify-between rounded-xl border border-white/10 shadow-glass-inset">
+<div class="absolute inset-0 rounded-xl bg-gradient-to-br from-white/10 to-transparent opacity-50"></div>
+<div class="absolute -inset-px rounded-xl border border-transparent bg-gradient-to-br from-neon-cyan/80 to-transparent opacity-80"></div>
+<div class="flex items-center gap-4 z-10">
+<div class="icon-container-3d-sharp bg-neon-cyan/60 shrink-0 size-14">
+<span class="material-symbols-outlined text-3xl text-white icon-inner-sharp" style="text-shadow: 0 0 10px rgba(0,234,255,0.8);">apartment</span>
+</div>
+<div class="flex flex-col">
+<p class="text-white text-lg font-bold leading-normal flex-1 truncate neon-text-effect">Info Stan</p>
+<p class="text-gray-300 text-sm font-normal leading-normal neon-text-effect">Rok: 15 Nov 2023</p>
+</div>
+</div>
+<div class="flex flex-col items-end gap-1 z-10 text-right bill-amount-container">
+<p class="text-white font-bold leading-normal neon-text-effect bill-amount">8.420,00</p>
+</div>
+</div>
+<div class="relative flex flex-col gap-4 bg-neon-magenta/25 backdrop-blur-xl p-4 min-h-14 rounded-xl border border-white/10 shadow-glass-inset">
+<div class="absolute inset-0 rounded-xl bg-gradient-to-br from-white/10 to-transparent opacity-50"></div>
+<div class="absolute -inset-px rounded-xl border border-transparent bg-gradient-to-br from-neon-magenta/80 to-transparent opacity-80"></div>
+<div class="flex items-center gap-4 z-10 w-full justify-between">
+<div class="flex items-center gap-4">
+<div class="icon-container-3d-sharp bg-neon-magenta/60 shrink-0 size-14">
+<span class="material-symbols-outlined text-3xl text-white icon-inner-sharp" style="text-shadow: 0 0 10px rgba(255,0,217,0.8);">phone_iphone</span>
+</div>
+<div class="flex flex-col">
+<p class="text-white text-lg font-bold leading-normal flex-1 truncate neon-text-effect">Telefon</p>
+<p class="text-gray-300 text-sm font-normal leading-normal neon-text-effect">Rok: 25 Oct 2023</p>
+</div>
+</div>
+<div class="flex flex-col items-end gap-1 text-right bill-amount-container">
+<p class="text-white font-bold leading-normal neon-text-effect bill-amount">4.599,00</p>
+</div>
+</div>
+<div class="w-full z-10">
+<button class="relative group w-full flex items-center justify-center bg-background-dark p-4 min-h-14 rounded-xl shadow-glass-inset transition-all hover:scale-[1.02] active:scale-[0.98]" style="
+  box-shadow: 
+    5px 5px 10px rgba(0, 0, 0, 0.6), 
+    -2px -2px 6px rgba(255, 255, 255, 0.1),
+    inset 1px 1px 2px rgba(255, 255, 255, 0.3),
+    inset -1px -1px 2px rgba(0, 0, 0, 0.5),
+    0 0 15px rgba(0, 234, 240, 0.4);
+  border: 1px solid rgba(255,255,255,0.15);
+  backdrop-filter: blur(4px);
+  transform-style: preserve-3d;
+">
+<div class="absolute inset-0 rounded-xl bg-neon-cyan/25"></div>
+<div class="absolute inset-0 rounded-xl bg-gradient-to-br from-white/10 to-transparent opacity-50" style="background: linear-gradient(145deg, rgba(255, 255, 255, 0.2) 0%, transparent 40%, rgba(0, 0, 0, 0.3) 100%);"></div>
+<div class="absolute -inset-px rounded-xl border border-transparent bg-gradient-to-br from-neon-cyan/80 to-transparent opacity-80"></div>
+<div class="absolute top-0 left-0 w-full h-[40%] rounded-t-xl pointer-events-none z-[5]" style="background: linear-gradient(180deg, rgba(255,255,255,0.3) 0%, rgba(255,255,255,0) 100%); clip-path: polygon(0 0, 100% 0, 100% 15%, 0 100%);"></div>
+<span class="relative z-10 font-bold tracking-wide text-white text-lg" style="text-shadow: 0 2px 4px rgba(0,0,0,0.8), 0 0 5px rgba(255, 255, 255, 0.9), 0 0 10px rgba(255, 255, 255, 0.7); filter: drop-shadow(2px 4px 6px rgba(0,0,0,0.5)); transform: translateZ(10px);">Potvrdi plaćanje</span>
+</button>
+</div>
+</div>
+<div class="relative flex items-center gap-4 bg-neon-green/25 backdrop-blur-xl p-4 min-h-14 justify-between rounded-xl border border-white/10 shadow-glass-inset">
+<div class="absolute inset-0 rounded-xl bg-gradient-to-br from-white/10 to-transparent opacity-50"></div>
+<div class="absolute -inset-px rounded-xl border border-transparent bg-gradient-to-br from-neon-green/80 to-transparent opacity-80"></div>
+<div class="flex items-center gap-4 z-10">
+<div class="icon-container-3d-sharp bg-neon-green/60 shrink-0 size-14">
+<span class="material-symbols-outlined text-3xl text-white icon-inner-sharp" style="text-shadow: 0 0 10px rgba(57,255,20,0.8);">bolt</span>
+</div>
+<div class="flex flex-col">
+<p class="text-white text-lg font-bold leading-normal flex-1 truncate neon-text-effect">Struja</p>
+<p class="text-gray-300 text-sm font-normal leading-normal neon-text-effect">Plaćeno: 15 Oct 2023</p>
+</div>
+</div>
+<div class="flex flex-col items-end gap-1 z-10 text-right bill-amount-container">
+<p class="text-white font-bold leading-normal neon-text-effect bill-amount">11.230,00</p>
+</div>
+</div>
+</div>
+</div>
+<div class="sticky bottom-0 mt-auto bg-background-dark/80 backdrop-blur-sm border-t border-white/10 p-2">
+<div class="grid grid-cols-4 gap-2">
+<div class="flex flex-col items-center gap-1 p-2 text-center text-primary cursor-pointer hover:text-white transition-colors">
+<span class="material-symbols-outlined text-2xl !font-bold neon-text-effect" style="font-variation-settings: 'FILL' 1;">home</span>
+<p class="text-xs font-bold leading-normal neon-text-effect">Početna</p>
+</div>
+<div class="flex flex-col items-center gap-1 p-2 text-center text-gray-400 cursor-pointer hover:text-white transition-colors">
+<span class="material-symbols-outlined text-2xl neon-text-effect">compare_arrows</span>
+<p class="text-[10px] font-medium leading-tight neon-text-effect mt-0.5">Poređenje Cena</p>
+</div>
+<div class="flex flex-col items-center gap-1 p-2 text-center text-gray-400 cursor-pointer hover:text-white transition-colors">
+<span class="material-symbols-outlined text-2xl neon-text-effect">bar_chart</span>
+<p class="text-xs font-medium leading-normal neon-text-effect">Statistika</p>
+</div>
+<div class="flex flex-col items-center gap-1 p-2 text-center text-gray-400 cursor-pointer hover:text-white transition-colors">
+<span class="material-symbols-outlined text-2xl neon-text-effect">settings</span>
+<p class="text-xs font-medium leading-normal neon-text-effect">Podešavanja</p>
+</div>
+</div>
+</div>
+</div>
+</body>
+<script>
+// Auto-scale font size for total amount based on text length
+function scaleAmountFont() {
+  const amountEl = document.getElementById('total-amount');
+  if (!amountEl) return;
+  
+  const container = amountEl.parentElement.parentElement;
+  const containerWidth = container.offsetWidth;
+  const text = amountEl.textContent.trim();
+  
+  // Start with a larger font size and shrink until it fits
+  let fontSize = 3.0; // Start at 48px (increased from 40px)
+  amountEl.style.fontSize = fontSize + 'rem';
+  
+  // Measure and adjust - using minimal padding (8px each side = 16px total)
+  while (amountEl.scrollWidth > containerWidth - 16 && fontSize > 1.0) {
+    fontSize -= 0.1;
+    amountEl.style.fontSize = fontSize + 'rem';
+  }
+}
+
+// Camera button click effect
+function initCameraButton() {
+  const cameraCircle = document.getElementById('camera-circle');
+  const cameraButton = cameraCircle ? cameraCircle.closest('button') : null;
+  
+  if (cameraButton && cameraCircle) {
+    cameraButton.addEventListener('click', function() {
+      // Add active class
+      cameraCircle.classList.add('camera-active');
+      
+      // Remove after 3 seconds (simulating camera taking photo)
+      setTimeout(function() {
+        cameraCircle.classList.remove('camera-active');
+      }, 3000);
+    });
+  }
+}
+
+// Scale bill amounts if too long
+function scaleBillAmounts() {
+  const amounts = document.querySelectorAll('.bill-amount');
+  
+  amounts.forEach(function(amountEl) {
+    const container = amountEl.closest('.bill-amount-container');
+    if (!container) return;
+    
+    const text = amountEl.textContent.trim();
+    const length = text.length;
+    
+    // Adjust font size based on length
+    let fontSize;
+    if (length <= 9) {
+      fontSize = 1.5; // 24px - small amounts (up to 999.999,99)
+    } else if (length <= 11) {
+      fontSize = 1.35; // 21.6px - medium amounts (up to 9.999.999,99)
+    } else if (length <= 13) {
+      fontSize = 1.2; // 19.2px - large amounts (6+ digits)
+    } else {
+      fontSize = 1.0; // 16px - very large amounts
+    }
+    
+    amountEl.style.fontSize = fontSize + 'rem';
+  });
+}
+
+// Run on page load
+window.addEventListener('DOMContentLoaded', function() {
+  scaleAmountFont();
+  initCameraButton();
+  scaleBillAmounts();
+});
+
+// Re-run on window resize
+window.addEventListener('resize', function() {
+  scaleAmountFont();
+  scaleBillAmounts();
+});
+</script>
+</html>

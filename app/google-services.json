@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "1072565451838",
+    "project_id": "platisa",
+    "storage_bucket": "platisa.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1072565451838:android:d76817ab9d2b549ccd656f",
+        "android_client_info": {
+          "package_name": "com.example.platisa"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1072565451838-io58jaegs0emop546bjgocg2ibq9iq6u.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.platisa",
+            "certificate_hash": "f945aec13a7c348f6f86e18258513b625f58f9f0"
+          }
+        },
+        {
+          "client_id": "1072565451838-537d1lfgiv8oq6q2gog4t63l5ld8r9d1.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCXRHA5ivFd8QdOSQTdCfZTCLG2sdlRvyo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1072565451838-537d1lfgiv8oq6q2gog4t63l5ld8r9d1.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

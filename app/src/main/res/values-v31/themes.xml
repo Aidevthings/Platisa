@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Platisa.Splash" parent="Theme.Platisa">
+        <item name="android:windowBackground">@drawable/splash_background</item>
+        <!-- Android 12+ Splash Screen Attributes -->
+        <item name="android:windowSplashScreenBackground">#080B16</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@android:color/transparent</item>
+        <item name="android:windowSplashScreenAnimationDuration">0</item>
+    </style>
+</resources>

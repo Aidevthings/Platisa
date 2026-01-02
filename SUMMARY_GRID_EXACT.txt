@@ -1,0 +1,194 @@
+// Exact recreation from HTML prototype
+@Composable
+fun SummaryGrid(
+    totalAmount: java.math.BigDecimal,
+    onCameraClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+    ) {
+        // Blur glow behind (absolute -inset-2 blur-2xl)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(196.dp) // 180 + 16 for -inset-2
+                .offset(x = (-8).dp, y = (-8).dp)
+                .background(
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            Color(0xFF00EAFF).copy(alpha = 0.5f),
+                            Color(0xFFFF00D9).copy(alpha = 0.5f)
+                        )
+                    )
+                )
+                .blur(32.dp)
+        )
+        
+        // Outer container (p-px rounded-2xl bg-gradient from-white/30 to-white/10 shadow-lg)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .shadow(8.dp, RoundedCornerShape(16.dp))
+                .clip(RoundedCornerShape(16.dp))
+                .background(
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            Color.White.copy(alpha = 0.3f),
+                            Color.White.copy(alpha = 0.1f)
+                        )
+                    )
+                )
+                .padding(1.dp) // p-px
+        ) {
+            // Grid container (bg-gradient from-white/20 to-white/5)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(15.dp))
+                    .background(
+                        brush = Brush.linearGradient(
+                            colors = listOf(
+                                Color.White.copy(alpha = 0.2f),
+                                Color.White.copy(alpha = 0.05f)
+                            )
+                        )
+                    ),
+                horizontalArrangement = Arrangement.spacedBy(1.dp) // gap-px
+            ) {
+                // LEFT PANEL - Total
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(180.dp)
+                        .background(Color.Black.copy(alpha = 0.4f))
+                        .padding(16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    // Gradient overlay
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .background(
+                                brush = Brush.linearGradient(
+                                    colors = listOf(
+                                        Color.White.copy(alpha = 0.1f),
+                                        Color.Transparent
+                                    )
+                                )
+                            )
+                    )
+                    
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        BoxWithConstraints(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            val text = com.example.platisa.core.common.Formatters.formatCurrency(totalAmount)
+                            val fontSize = when {
+                                text.length <= 8 -> 48.sp
+                                text.length <= 10 -> 40.sp
+                                text.length <= 12 -> 34.sp
+                                else -> 28.sp
+                            }
+                            
+                            Text(
+                                text = text,
+                                fontSize = fontSize,
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace,
+                                maxLines = 1
+                            )
+                        }
+                        
+                        Spacer(modifier = Modifier.height(8.dp))
+                        
+                        Text(
+                            text = "Ukupno za plaćanje",
+                            fontSize = 14.sp,
+                            color = Color(0xFFD1D5DB),
+                            fontWeight = FontWeight.SemiBold,
+                            letterSpacing = 1.5.sp
+                        )
+                    }
+                }
+                
+                // RIGHT PANEL - Camera
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(180.dp)
+                        .background(Color.Black.copy(alpha = 0.4f))
+                        .clickable(onClick = onCameraClick)
+                        .padding(16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .background(
+                                brush = Brush.linearGradient(
+                                    colors = listOf(
+                                        Color.White.copy(alpha = 0.1f),
+                                        Color.Transparent
+                                    )
+                                )
+                            )
+                    )
+                    
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Box(
+                            modifier = Modifier.size(80.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(Color(0xFF111217).copy(alpha = 0.3f), CircleShape)
+                                    .border(1.dp, Color.White.copy(alpha = 0.1f), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .matchParentSize()
+                                        .background(
+                                            brush = Brush.linearGradient(
+                                                colors = listOf(
+                                                    Color.White.copy(alpha = 0.1f),
+                                                    Color.Transparent
+                                                )
+                                            ),
+                                            shape = CircleShape
+                                        )
+                                )
+                                
+                                Icon(
+                                    imageVector = Icons.Default.CameraAlt,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(48.dp)
+                                )
+                            }
+                        }
+                        
+                        Spacer(modifier = Modifier.height(12.dp))
+                        
+                        Text(
+                            text = "Slikaj Kamerom",
+                            fontSize = 14.sp,
+                            color = Color.White,
+                            fontWeight = FontWeight.SemiBold,
+                            letterSpacing = 1.5.sp
+                        )
+                    }
+                }
+            }
+        }
+    }
+}

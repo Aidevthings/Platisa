@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Platiša - Home Screen</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script>
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            "primary": "#00eaff",
+            "background-light": "#f6f6f8",
+            "background-dark": "#111217",
+            "neon-cyan": "#00eaff",
+            "neon-magenta": "#ff00d9",
+            "neon-lime": "#aaff00",
+            "neon-green": "#39ff14",
+          },
+          fontFamily: {
+            "display": ["Manrope", "sans-serif"],
+            "futuristic": ["Orbitron", "sans-serif"],
+          },
+          borderRadius: {
+            "DEFAULT": "0.5rem",
+            "lg": "0.75rem",
+            "xl": "1rem",
+            "2xl": "1.25rem",
+            "full": "9999px"
+          },
+          boxShadow: {
+            'glass-inset': 'inset 0 1px 1px 0 rgb(255 255 255 / 0.1), inset 0 -1px 1px 0 rgb(0 0 0 / 0.2)',
+          }
+        },
+      },
+    }
+  </script>
+<style>
+    .material-symbols-outlined {
+      font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+    }
+    body {
+      min-height: max(884px, 100dvh);
+    }
+    .glitch {
+      position: relative;
+      color: white;
+    }
+    .glitch::before,
+    .glitch::after {
+      content: 'Zdravo, Alex!';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: #111217;
+      overflow: hidden;
+    }
+    .glitch::before {
+      left: 2px;
+      text-shadow: -2px 0 #ff00d9;
+      animation: glitch-anim-1 2.5s infinite linear alternate-reverse;
+    }
+    .glitch::after {
+      left: -2px;
+      text-shadow: -2px 0 #00eaff;
+      animation: glitch-anim-2 2.5s infinite linear alternate-reverse;
+    }
+    @keyframes glitch-anim-1 {
+      0% { clip-path: polygon(0 2%, 100% 2%, 100% 5%, 0 5%); }
+      10% { clip-path: polygon(0 15%, 100% 15%, 100% 15%, 0 15%); }
+      20% { clip-path: polygon(0 10%, 100% 10%, 100% 20%, 0 20%); }
+      30% { clip-path: polygon(0 1%, 100% 1%, 100% 2%, 0 2%); }
+      40% { clip-path: polygon(0 33%, 100% 33%, 100% 33%, 0 33%); }
+      50% { clip-path: polygon(0 44%, 100% 44%, 100% 44%, 0 44%); }
+      60% { clip-path: polygon(0 50%, 100% 50%, 100% 20%, 0 20%); }
+      70% { clip-path: polygon(0 70%, 100% 70%, 100% 70%, 0 70%); }
+      80% { clip-path: polygon(0 80%, 100% 80%, 100% 80%, 0 80%); }
+      90% { clip-path: polygon(0 50%, 100% 50%, 100% 55%, 0 55%); }
+      100% { clip-path: polygon(0 60%, 100% 60%, 100% 70%, 0 70%); }
+    }
+    @keyframes glitch-anim-2 {
+      0% { clip-path: polygon(0 5%, 100% 5%, 100% 6%, 0 6%); }
+      10% { clip-path: polygon(0 8%, 100% 8%, 100% 8%, 0 8%); }
+      20% { clip-path: polygon(0 20%, 100% 20%, 100% 25%, 0 25%); }
+      30% { clip-path: polygon(0 30%, 100% 30%, 100% 30%, 0 30%); }
+      40% { clip-path: polygon(0 50%, 100% 50%, 100% 55%, 0 55%); }
+      50% { clip-path: polygon(0 70%, 100% 70%, 100% 75%, 0 75%); }
+      60% { clip-path: polygon(0 80%, 100% 80%, 100% 85%, 0 85%); }
+      70% { clip-path: polygon(0 60%, 100% 60%, 100% 65%, 0 65%); }
+      80% { clip-path: polygon(0 40%, 100% 40%, 100% 45%, 0 45%); }
+      90% { clip-path: polygon(0 20%, 100% 20%, 100% 25%, 0 25%); }
+      100% { clip-path: polygon(0 10%, 100% 10%, 100% 15%, 0 15%); }
+    }
+    .ambient-glow-cyan::before {
+      content: '';
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(circle, theme('colors.neon-cyan / 20%') 0%, transparent 70%);
+      opacity: 0.8;
+      pointer-events: none;
+    }
+    .ambient-glow-magenta::before {
+      content: '';
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(circle, theme('colors.neon-magenta / 20%') 0%, transparent 70%);
+      opacity: 0.8;
+      pointer-events: none;
+    }
+    .ambient-glow-camera::before {
+        content: '';
+        position: absolute;
+        inset: -20px;
+        background: radial-gradient(circle at center, theme('colors.neon-cyan / 15%') 0%, theme('colors.neon-magenta / 15%') 80%, transparent 100%);
+        opacity: 0.5;
+        filter: blur(20px);
+        z-index: 1;
+        pointer-events: none;
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="font-display">
+<div class="relative flex h-auto min-h-screen w-full flex-col bg-background-dark group/design-root overflow-x-hidden" style="max-width: 420px; margin: auto;">
+<div class="absolute top-0 left-0 h-96 w-full bg-gradient-to-br from-cyan-500/30 via-fuchsia-500/30 to-lime-500/30 blur-3xl"></div>
+<div class="flex items-center bg-background-dark/80 backdrop-blur-sm p-4 pb-2 justify-between sticky top-0 z-10 border-b border-white/10">
+<div class="flex size-12 shrink-0 items-center justify-center">
+<div class="relative group">
+<div class="absolute -inset-0.5 bg-gradient-to-r from-neon-cyan to-neon-magenta rounded-full blur-md opacity-75 group-hover:opacity-100 transition-opacity duration-300 animate-pulse"></div>
+<div class="relative bg-center bg-no-repeat aspect-square bg-cover rounded-full size-12 border-2 border-neon-cyan/80 group-hover:border-neon-magenta/80 transition-colors duration-300" data-alt="User profile picture" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuBdvHHJLXJhSkkYN0wj4JN85fPadrbuPTabR2a8PZIzptVQa7FXcLgtdkTuY863-G78-wy02NqS1UIRzMsgssEWO0x4qlLxF9548YjH2-7wGx5KXUGl_3CvpM1Ys5DSbR6AlGYkI1xKW-yqsHZDneOwpePX9f1aFKyNVhVtv4gP2uBifKzSZKfHxdcMdIeFafs2PUXLKzayz29g587VImp33CNlJ-1UHeSZUt8rbDziqHniyPytena8eMSh7QB23KgQ7hHplx_g7w");'></div>
+</div>
+</div>
+<div class="flex-1 ml-4 overflow-hidden">
+<h2 class="glitch text-white text-lg font-bold leading-tight tracking-[-0.015em]">Zdravo, Alex!</h2>
+</div>
+<div class="flex items-center justify-end gap-2">
+<button class="relative group flex max-w-[480px] cursor-pointer items-center justify-center overflow-hidden rounded-full h-12 w-12 bg-transparent text-white/80 hover:text-white transition-colors">
+<div class="absolute inset-0 bg-neon-cyan/20 rounded-full blur-md opacity-75 group-hover:opacity-100 animate-pulse transition-all duration-300"></div>
+<span class="material-symbols-outlined text-3xl z-10">notifications</span>
+</button>
+<button class="relative group flex max-w-[480px] cursor-pointer items-center justify-center overflow-hidden rounded-full h-12 w-12 bg-transparent text-white/80 hover:text-white transition-colors">
+<div class="absolute inset-0 bg-neon-magenta/20 rounded-full blur-md opacity-75 group-hover:opacity-100 animate-pulse transition-all duration-300"></div>
+<span class="material-symbols-outlined text-3xl z-10">light_mode</span>
+</button>
+</div>
+</div>
+<div class="p-4 flex flex-col gap-6 z-0">
+<div class="relative p-px rounded-2xl overflow-hidden bg-gradient-to-br from-white/30 to-white/10 shadow-lg">
+<div class="absolute -inset-2 bg-gradient-to-br from-neon-cyan/50 to-neon-magenta/50 blur-2xl opacity-40"></div>
+<div class="grid grid-cols-2 gap-px bg-gradient-to-br from-white/20 to-white/5 rounded-[15px] overflow-hidden">
+<div class="relative flex flex-col gap-4 p-4 bg-black/40 backdrop-blur-xl min-h-[160px] justify-between">
+<div class="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent"></div>
+<div class="flex flex-col gap-4 z-10">
+<div class="flex flex-col gap-1.5">
+<div class="flex items-center gap-2">
+<div class="relative flex items-center justify-center size-8 rounded-lg bg-neon-cyan/10 border border-neon-cyan/30 shadow-glass-inset ambient-glow-cyan">
+<span class="material-symbols-outlined text-lg text-neon-cyan z-10" style="font-variation-settings: 'wght' 300;">receipt_long</span>
+</div>
+<h4 class="font-futuristic text-[11px] font-medium text-gray-300 uppercase tracking-wider">Neplaćeni</h4>
+</div>
+<p class="font-futuristic text-4xl font-bold text-neon-cyan">1</p>
+</div>
+<div class="flex flex-col gap-1.5">
+<div class="flex items-center gap-2">
+<div class="relative flex items-center justify-center size-8 rounded-lg bg-neon-magenta/10 border border-neon-magenta/30 shadow-glass-inset ambient-glow-magenta">
+<span class="material-symbols-outlined text-lg text-neon-magenta z-10" style="font-variation-settings: 'wght' 300;">pending_actions</span>
+</div>
+<h4 class="font-futuristic text-[11px] font-medium text-gray-300 uppercase tracking-wider">Za potvrdu</h4>
+</div>
+<p class="font-futuristic text-4xl font-bold text-neon-magenta">1</p>
+</div>
+</div>
+</div>
+<button class="relative group flex flex-col justify-center items-center gap-3 p-4 bg-black/40 backdrop-blur-xl min-h-[160px]">
+<div class="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent"></div>
+<div class="absolute -inset-px rounded-xl border border-transparent bg-gradient-to-br from-neon-cyan/50 to-neon-magenta/50 opacity-0 group-hover:opacity-60 transition-opacity duration-300"></div>
+<div class="relative flex items-center justify-center size-20 bg-background-dark/30 rounded-full border border-white/10 shadow-glass-inset z-10 backdrop-blur-sm ambient-glow-camera">
+<div class="absolute inset-0 rounded-full bg-gradient-to-br from-white/10 to-transparent"></div>
+<span class="material-symbols-outlined text-5xl text-white transition-all duration-300 group-hover:text-neon-cyan group-hover:scale-110 z-10" style="font-variation-settings: 'wght' 200;">photo_camera</span>
+</div>
+<p class="font-futuristic text-sm font-semibold text-white z-10 tracking-wider">Slikaj Kamerom</p>
+</button>
+</div>
+</div>
+<h3 class="text-white text-xl font-bold leading-tight tracking-[-0.015em]">Recent Bills</h3>
+<div class="flex flex-col gap-3">
+<div class="relative flex items-center gap-4 bg-neon-cyan/25 backdrop-blur-xl p-4 min-h-14 justify-between rounded-xl border border-white/10 shadow-glass-inset">
+<div class="absolute inset-0 rounded-xl bg-gradient-to-br from-white/10 to-transparent opacity-50"></div>
+<div class="absolute -inset-px rounded-xl border border-transparent bg-gradient-to-br from-neon-cyan/80 to-transparent opacity-80"></div>
+<div class="flex items-center gap-4 z-10">
+<div class="text-white flex items-center justify-center rounded-lg bg-neon-cyan/50 shrink-0 size-12">
+<span class="material-symbols-outlined text-3xl">wifi</span>
+</div>
+<div class="flex flex-col">
+<p class="text-white text-base font-bold leading-normal flex-1 truncate">Internet Bill</p>
+<p class="text-gray-300 text-sm font-normal leading-normal">Due: 30 Nov 2023</p>
+</div>
+</div>
+<div class="flex flex-col items-end gap-1 z-10 text-right">
+<p class="text-white text-base font-bold leading-normal">7,950</p>
+<p class="text-gray-300 text-xs font-normal leading-normal">RSD</p>
+</div>
+</div>
+<div class="relative flex flex-col gap-4 bg-neon-magenta/25 backdrop-blur-xl p-4 min-h-14 rounded-xl border border-white/10 shadow-glass-inset">
+<div class="absolute inset-0 rounded-xl bg-gradient-to-br from-white/10 to-transparent opacity-50"></div>
+<div class="absolute -inset-px rounded-xl border border-transparent bg-gradient-to-br from-neon-magenta/80 to-transparent opacity-80"></div>
+<div class="flex items-center gap-4 z-10 w-full justify-between">
+<div class="flex items-center gap-4">
+<div class="text-white flex items-center justify-center rounded-lg bg-neon-magenta/50 shrink-0 size-12">
+<span class="material-symbols-outlined text-3xl">phone_iphone</span>
+</div>
+<div class="flex flex-col">
+<p class="text-white text-base font-bold leading-normal flex-1 truncate">Telefon</p>
+<p class="text-gray-300 text-sm font-normal leading-normal">Due: 25 Oct 2023</p>
+</div>
+</div>
+<div class="flex flex-col items-end gap-1 text-right">
+<p class="text-white text-base font-bold leading-normal">4,599</p>
+<p class="text-gray-300 text-xs font-normal leading-normal">RSD</p>
+</div>
+</div>
+<div class="w-full z-10">
+<button class="relative w-full overflow-hidden rounded-full bg-gradient-to-r from-purple-600 to-pink-500 p-px text-center font-bold tracking-wide text-white shadow-lg transition-all hover:scale-[1.02] active:scale-[0.98]">
+<div class="relative z-10 w-full rounded-full bg-background-dark/80 py-3 px-4 backdrop-blur-md">Potvrdi plaćanje</div>
+<div class="absolute inset-0 rounded-full bg-gradient-to-br from-white/20 to-transparent opacity-50 backdrop-blur-sm"></div>
+<div class="absolute inset-0 -z-10 bg-gradient-to-r from-purple-600 to-pink-500 blur-md"></div>
+</button>
+</div>
+</div>
+<div class="relative flex items-center gap-4 bg-neon-green/25 backdrop-blur-xl p-4 min-h-14 justify-between rounded-xl border border-white/10 shadow-glass-inset">
+<div class="absolute inset-0 rounded-xl bg-gradient-to-br from-white/10 to-transparent opacity-50"></div>
+<div class="absolute -inset-px rounded-xl border border-transparent bg-gradient-to-br from-neon-green/80 to-transparent opacity-80"></div>
+<div class="flex items-center gap-4 z-10">
+<div class="text-white flex items-center justify-center rounded-lg bg-neon-green/50 shrink-0 size-12">
+<span class="material-symbols-outlined text-3xl">bolt</span>
+</div>
+<div class="flex flex-col">
+<p class="text-white text-base font-bold leading-normal flex-1 truncate">Electricity</p>
+<p class="text-gray-300 text-sm font-normal leading-normal">Paid: 15 Oct 2023</p>
+</div>
+</div>
+<div class="flex flex-col items-end gap-1 z-10 text-right">
+<p class="text-white text-base font-bold leading-normal">11,230</p>
+<p class="text-gray-300 text-xs font-normal leading-normal">RSD</p>
+</div>
+</div>
+</div>
+</div>
+<div class="sticky bottom-0 mt-auto bg-background-dark/80 backdrop-blur-sm border-t border-white/10 p-2">
+<div class="grid grid-cols-3 gap-2">
+<div class="flex flex-col items-center gap-1 p-2 text-center text-primary">
+<span class="material-symbols-outlined text-2xl !font-bold" style="font-variation-settings: 'FILL' 1;">home</span>
+<p class="text-xs font-bold leading-normal">Početna</p>
+</div>
+<div class="flex flex-col items-center gap-1 p-2 text-center text-gray-400">
+<span class="material-symbols-outlined text-2xl">bar_chart</span>
+<p class="text-xs font-medium leading-normal">Statistika</p>
+</div>
+<div class="flex flex-col items-center gap-1 p-2 text-center text-gray-400">
+<span class="material-symbols-outlined text-2xl">settings</span>
+<p class="text-xs font-medium leading-normal">Podešavanja</p>
+</div>
+</div>
+</div>
+</div>
+</body></html>

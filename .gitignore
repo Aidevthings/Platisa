@@ -1,0 +1,41 @@
+# Android Studio / Gradle
+*.iml
+.gradle
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+
+# Local configuration
+local.properties
+
+# Build logs and error files
+*.log
+build_*.txt
+err*.txt
+*_error*.txt
+*_output*.txt
+compile_*.txt
+test_*.txt
+gradle_tasks_*.txt
+settings_errors.txt
+assemble_output.txt
+assembly_error.txt
+clean_build.txt
+debug_compile.txt
+latest_compile.txt
+
+# Temporary files
+*.tmp
+*.bak
+*_BACKUP.kt
+
+# Cleanup scripts (keep in repo but ignore outputs)
+cleanup_output.txt

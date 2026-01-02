@@ -1,0 +1,3 @@
+The file BillDetailsScreen.kt has duplicate content starting at line 503.
+Need to remove duplicate QRCodeSection and all remaining composables that are duplicated.
+The correct file should end with the BillType enum at the very end.

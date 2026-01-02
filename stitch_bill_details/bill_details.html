@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html class="dark" lang="sr">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>Platiša - Detalji Računa</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&display=swap" rel="stylesheet"/>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700&display=swap" rel="stylesheet"/>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+    <script>
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              colors: {
+                "background-dark": "#111217",
+                "neon-cyan": "#00eaff",
+                "neon-magenta": "#ff00d9",
+                "neon-green": "#39ff14",
+              },
+              fontFamily: {
+                "display": ["Manrope", "sans-serif"],
+                "futuristic": ["Orbitron", "sans-serif"],
+              },
+            },
+          },
+        }
+    </script>
+    <style>
+        .material-symbols-outlined {
+          font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body {
+          min-height: 100dvh;
+          font-family: 'Manrope', sans-serif;
+        }
+        .neon-text-effect {
+            text-shadow: 0 0 5px rgba(255, 255, 255, 0.8), 
+                         0 0 10px rgba(255, 255, 255, 0.6), 
+                         0 0 15px rgba(255, 255, 255, 0.4), 
+                         0 0 20px #00eaff, 
+                         0 0 35px #00eaff, 
+                         0 0 40px #00eaff, 
+                         0 0 50px #00eaff, 
+                         0 0 75px #00eaff;
+        }
+        .neon-text-magenta {
+            text-shadow: 0 0 5px rgba(255, 255, 255, 0.8), 
+                         0 0 10px rgba(255, 255, 255, 0.6), 
+                         0 0 20px #ff00d9, 
+                         0 0 35px #ff00d9;
+        }
+        @keyframes scan {
+            0% { top: 0%; opacity: 0; }
+            15% { opacity: 1; }
+            85% { opacity: 1; }
+            100% { top: 100%; opacity: 0; }
+        }
+        .scan-line {
+            animation: scan 3s linear infinite;
+        }
+        @keyframes rotate-border {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .rotating-border {
+            animation: rotate-border 8s linear infinite;
+        }
+        @keyframes neon-pulse {
+            0%, 100% { 
+                opacity: 0.4;
+                filter: blur(20px);
+            }
+            50% { 
+                opacity: 0.7;
+                filter: blur(25px);
+            }
+        }
+        .neon-pulse {
+            animation: neon-pulse 2s ease-in-out infinite;
+        }
+        @keyframes fill-bar {
+            0% { height: 0%; }
+            100% { height: var(--bar-height); }
+        }
+        .bar-fill {
+            animation: fill-bar 1.5s ease-out forwards;
+        }
+        @keyframes count-up {
+            0% { opacity: 0; }
+            100% { opacity: 1; }
+        }
+        .count-up {
+            animation: count-up 0.5s ease-out forwards;
+        }
+    </style>
+</head>
+<body class="bg-background-dark text-white">
+    <div class="relative flex h-auto min-h-screen w-full flex-col overflow-x-hidden" style="max-width: 420px; margin: auto;">
+        <!-- Ambient Background -->
+        <div class="absolute top-0 left-0 h-96 w-full bg-gradient-to-br from-cyan-500/30 via-fuchsia-500/30 to-lime-500/30 blur-3xl"></div>
+        
+        <!-- Top Navigation Bar -->
+        <div class="flex items-center bg-background-dark/80 backdrop-blur-sm p-4 justify-between sticky top-0 z-20 border-b border-white/10">
+            <!-- Back Button -->
+            <button onclick="goBack()" class="relative p-[2px] rounded-full overflow-hidden bg-gradient-to-tr from-neon-cyan via-purple-500 to-neon-magenta shadow-[0_0_15px_rgba(0,234,255,0.4)] cursor-pointer hover:scale-105 transition-transform">
+                <div class="absolute -inset-1 bg-gradient-to-br from-neon-cyan/60 to-neon-magenta/60 blur-lg opacity-50"></div>
+                <div class="relative flex items-center justify-center size-12 bg-gray-900 rounded-full overflow-hidden ring-1 ring-white/10 hover:bg-white/10 transition-colors">
+                    <span class="material-symbols-outlined text-white" style="font-size: 24px;">arrow_back</span>
+                </div>
+            </button>
+            
+            <!-- Title -->
+            <h2 class="flex-1 ml-4 text-xl font-bold" style="text-shadow: 0 0 5px rgba(255, 255, 255, 0.8), 0 0 10px rgba(255, 255, 255, 0.6), 0 0 20px #00eaff, 0 0 35px #00eaff;">Detalji Računa</h2>
+            
+            <!-- More Options Button -->
+            <button class="relative group flex items-center justify-center rounded-full h-12 w-12 bg-transparent text-white/80 hover:text-white transition-colors">
+                <div class="absolute inset-0 bg-neon-magenta/20 rounded-full blur-md opacity-0 group-hover:opacity-75 transition-all duration-300"></div>
+                <span class="material-symbols-outlined text-3xl z-10">more_vert</span>
+            </button>
+        </div>
+        
+        <!-- Main Content -->
+        <div class="p-4 flex flex-col gap-6 z-10 flex-1 pb-20">
+            <!-- QR Code Section -->
+            <div class="flex flex-col items-center gap-6 pt-2">
+                <!-- QR Code Container -->
+                <div class="relative">
+                    <!-- Neon Pulse Glow (background only) -->
+                    <div class="absolute -inset-4 bg-gradient-to-br from-neon-cyan/40 to-neon-magenta/40 rounded-2xl neon-pulse" style="z-index: -1;"></div>
+                    
+                    <!-- QR Frame with rotating border -->
+                    <div class="relative p-1 rounded-2xl shadow-xl backdrop-blur-sm overflow-hidden" style="background: linear-gradient(to bottom right, rgba(255, 255, 255, 0.2), transparent);">
+                        <!-- Rotating border INSIDE frame using pseudo-element -->
+                        <div class="absolute inset-0 rounded-2xl overflow-hidden" style="padding: 2px;">
+                            <div class="absolute inset-[-100%] rotating-border" style="background: conic-gradient(from 0deg, transparent 0%, #00eaff 25%, transparent 50%, #ff00d9 75%, transparent 100%);"></div>
+                        </div>
+                        
+                        <div class="relative overflow-hidden rounded-[14px] bg-black/60 p-5 shadow-inner border border-white/10" style="z-index: 1;">
+                            <!-- Scanning Line Effect -->
+                            <div class="absolute left-0 right-0 h-0.5 bg-neon-cyan shadow-[0_0_15px_#00eaff] z-20 scan-line opacity-80"></div>
+                            <!-- QR Code Image -->
+                            <img alt="Skenirani QR Kod" 
+                                 class="size-48 opacity-90 mix-blend-screen filter drop-shadow-[0_0_8px_rgba(255,255,255,0.4)]" 
+                                 src="https://lh3.googleusercontent.com/aida-public/AB6AXuBHcAu0os487qnc45HZLjBPd_pA17WyG9RADsZnHwtnencp6UE14IPeYRiQOSLdFxrtxvdoUKrJCCh9SSxpRBP8-gE-W6ZnP_0NwA8fUNtSch30jpntrIh0X88rcg3rjWNLUmpk9OOr4MwWDsWzeBIClAe3MNe8UEj_oB_4jCDPID-SC2nkTm5tPIz7gONyZJd5n31lRWPevziVlgm-Y3P57gCvAHaZJ3CVHwP3zCN1lpZmHC67_ivnoP7JvGxLxXN7izq0ZeAjgA"/>
+                            <div class="absolute inset-0 bg-gradient-to-br from-neon-cyan/5 via-transparent to-neon-magenta/5 pointer-events-none"></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Save QR Button -->
+                <button onclick="saveQRCode()" class="relative group w-full max-w-[280px] flex items-center justify-center gap-3 p-3.5 rounded-xl bg-background-dark border border-white/20 shadow-[0_4px_8px_rgba(0,0,0,0.5),inset_0_0_6px_rgba(255,255,255,0.1)] transition-all hover:scale-[1.03] active:scale-[0.98]">
+                    <div class="absolute inset-0 rounded-xl bg-gradient-to-r from-neon-cyan/10 to-neon-magenta/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                    <div class="absolute -inset-px rounded-xl border border-transparent bg-gradient-to-r from-neon-cyan/60 to-neon-magenta/60 opacity-40 group-hover:opacity-70 blur-[2px] transition-opacity"></div>
+                    <span class="material-symbols-outlined text-neon-cyan group-hover:text-white transition-colors z-10 text-2xl" style="text-shadow: 0 0 10px rgba(0,234,255,0.8);">download</span>
+                    <span class="font-bold text-lg tracking-widest text-white z-10" style="text-shadow: 0 0 5px rgba(255, 255, 255, 0.8), 0 0 10px rgba(255, 255, 255, 0.6);">Sačuvaj QR kod</span>
+                </button>
+            </div>
+            
+            <!-- Data Fields -->
+            <div class="flex flex-col gap-5 mt-2">
+                <!-- Dynamic Metrics Section (Electricity/Water specific) -->
+                <div id="metrics-section" style="display: none;">
+                    <!-- Will be populated dynamically -->
+                </div>
+                
+                <!-- Amount Field -->
+                <div class="relative group">
+                    <label class="block mb-2 ml-1 text-sm font-bold uppercase tracking-wider text-neon-cyan" style="text-shadow: 0 0 4px rgba(0, 234, 240, 0.6), 0 0 8px rgba(0, 234, 240, 0.4);">Iznos</label>
+                    <div class="relative flex items-center bg-white/5 border border-white/10 rounded-xl p-3 backdrop-blur-md shadow-[0_4px_8px_rgba(0,0,0,0.5),inset_0_0_6px_rgba(255,255,255,0.1)] transition-all group-hover:bg-white/10 group-hover:border-neon-magenta/40">
+                        <span class="material-symbols-outlined text-neon-magenta/80 mr-3 text-3xl">payments</span>
+                        <input class="w-full bg-transparent border-none p-0 font-bold text-white placeholder-white/20 focus:ring-0 focus:outline-none bill-amount" 
+                               readonly 
+                               type="text" 
+                               value="4.599,00"
+                               style="font-size: 1.5rem; text-shadow: 0 0 4px rgba(255, 255, 255, 0.6), 0 0 8px rgba(255, 255, 255, 0.4);"/>
+                        <div class="absolute inset-0 rounded-xl pointer-events-none bg-gradient-to-r from-transparent via-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                    </div>
+                </div>
+                
+                <!-- Due Date Field -->
+                <div class="relative group">
+                    <label class="block mb-2 ml-1 text-sm font-bold uppercase tracking-wider text-neon-cyan" style="text-shadow: 0 0 4px rgba(0, 234, 240, 0.6), 0 0 8px rgba(0, 234, 240, 0.4);">Datum dospeća</label>
+                    <div class="relative flex items-center bg-white/5 border border-white/10 rounded-xl p-3.5 backdrop-blur-md shadow-[0_4px_8px_rgba(0,0,0,0.5),inset_0_0_6px_rgba(255,255,255,0.1)] transition-all group-hover:bg-white/10 group-hover:border-neon-cyan/40">
+                        <span class="material-symbols-outlined text-neon-cyan/80 mr-3 text-2xl">calendar_month</span>
+                        <input class="w-full bg-transparent border-none p-0 text-lg font-bold text-white placeholder-white/20 focus:ring-0 focus:outline-none" 
+                               readonly 
+                               type="text" 
+                               value="25. Oktobar 2023"
+                               style="text-shadow: 0 0 2px rgba(170, 170, 170, 0.3);"/>
+                    </div>
+                </div>
+                
+                <!-- Issuer Field -->
+                <div class="relative group">
+                    <label class="block mb-2 ml-1 text-sm font-bold uppercase tracking-wider text-neon-cyan" style="text-shadow: 0 0 4px rgba(0, 234, 240, 0.6), 0 0 8px rgba(0, 234, 240, 0.4);">Izdavalac</label>
+                    <div class="relative flex items-center bg-white/5 border border-white/10 rounded-xl p-3.5 backdrop-blur-md shadow-[0_4px_8px_rgba(0,0,0,0.5),inset_0_0_6px_rgba(255,255,255,0.1)] transition-all group-hover:bg-white/10 group-hover:border-neon-cyan/40">
+                        <span class="material-symbols-outlined text-neon-cyan/80 mr-3 text-2xl">business</span>
+                        <input class="w-full bg-transparent border-none p-0 text-lg font-bold text-white placeholder-white/20 focus:ring-0 focus:outline-none" 
+                               readonly 
+                               type="text" 
+                               value="Yettel d.o.o."
+                               style="text-shadow: 0 0 2px rgba(170, 170, 170, 0.3);"/>
+                    </div>
+                </div>
+                
+                <!-- Payment Purpose Field -->
+                <div class="relative group">
+                    <label class="block mb-2 ml-1 text-sm font-bold uppercase tracking-wider text-neon-cyan" style="text-shadow: 0 0 4px rgba(0, 234, 240, 0.6), 0 0 8px rgba(0, 234, 240, 0.4);">Svrha plaćanja</label>
+                    <div class="relative flex items-start bg-white/5 border border-white/10 rounded-xl p-3.5 backdrop-blur-md shadow-[0_4px_8px_rgba(0,0,0,0.5),inset_0_0_6px_rgba(255,255,255,0.1)] min-h-[90px] transition-all group-hover:bg-white/10 group-hover:border-neon-cyan/40">
+                        <span class="material-symbols-outlined text-neon-cyan/80 mr-3 mt-1 text-2xl">description</span>
+                        <textarea class="w-full h-full bg-transparent border-none p-0 text-sm font-medium text-gray-300 placeholder-white/20 focus:ring-0 focus:outline-none resize-none leading-relaxed" 
+                                  readonly
+                                  style="text-shadow: 0 0 2px rgba(170, 170, 170, 0.3);">Račun za telekomunikacione usluge za mesec septembar 2023. Ref: 99123-22</textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Bottom Navigation -->
+        <div class="sticky bottom-0 mt-auto bg-background-dark/80 backdrop-blur-sm border-t border-white/10 p-2">
+            <div class="grid grid-cols-4 gap-2">
+                <div class="flex flex-col items-center gap-1 p-2 text-center text-primary cursor-pointer hover:text-white transition-colors">
+                    <span class="material-symbols-outlined text-2xl !font-bold neon-text-effect" style="font-variation-settings: 'FILL' 1;">home</span>
+                    <p class="text-xs font-bold leading-normal neon-text-effect">Početna</p>
+                </div>
+                <div class="flex flex-col items-center gap-1 p-2 text-center text-gray-400 cursor-pointer hover:text-white transition-colors">
+                    <span class="material-symbols-outlined text-2xl">compare_arrows</span>
+                    <p class="text-[10px] font-medium leading-tight mt-0.5">Poređenje Cena</p>
+                </div>
+                <div class="flex flex-col items-center gap-1 p-2 text-center text-gray-400 cursor-pointer hover:text-white transition-colors">
+                    <span class="material-symbols-outlined text-2xl">bar_chart</span>
+                    <p class="text-xs font-medium leading-normal">Statistika</p>
+                </div>
+                <div class="flex flex-col items-center gap-1 p-2 text-center text-gray-400 cursor-pointer hover:text-white transition-colors">
+                    <span class="material-symbols-outlined text-2xl">settings</span>
+                    <p class="text-xs font-medium leading-normal">Podešavanja</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Sample bill data - this would come from clicking a bill on home screen
+        const currentBill = {
+            id: 'bill-4599',
+            type: 'electricity', // 'electricity', 'water', 'phone', 'internet', 'apartment'
+            qrCode: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBHcAu0os487qnc45HZLjBPd_pA17WyG9RADsZnHwtnencp6UE14IPeYRiQOSLdFxrtxvdoUKrJCCh9SSxpRBP8-gE-W6ZnP_0NwA8fUNtSch30jpntrIh0X88rcg3rjWNLUmpk9OOr4MwWDsWzeBIClAe3MNe8UEj_oB_4jCDPID-SC2nkTm5tPIz7gONyZJd5n31lRWPevziVlgm-Y3P57gCvAHaZJ3CVHwP3zCN1lpZmHC67_ivnoP7JvGxLxXN7izq0ZeAjgA',
+            amount: 4599.00,
+            dueDate: '25. Oktobar 2023',
+            issuer: 'Yettel d.o.o.',
+            purpose: 'Račun za telekomunikacione usluge za mesec septembar 2023. Ref: 99123-22',
+            status: 'unpaid', // 'unpaid', 'open', 'paid'
+            
+            // Optional metrics (only for certain bill types)
+            metrics: {
+                vtConsumption: 800,  // Viša Tarifa (kWh) - only for electricity
+                ntConsumption: 434,  // Niža Tarifa (kWh) - only for electricity
+                waterConsumption: 15500, // Litri - only for water
+            }
+        };
+        
+        // Initialize page on load
+        window.addEventListener('DOMContentLoaded', function() {
+            loadBillData(currentBill);
+            animateCounters();
+        });
+        
+        // Animate counter numbers
+        function animateCounters() {
+            const counters = document.querySelectorAll('.counter');
+            counters.forEach(counter => {
+                const target = parseInt(counter.getAttribute('data-target'));
+                const duration = 1500; // 1.5 seconds
+                const steps = 60;
+                const increment = target / steps;
+                let current = 0;
+                
+                const timer = setInterval(() => {
+                    current += increment;
+                    if (current >= target) {
+                        counter.textContent = target.toLocaleString('sr-RS');
+                        clearInterval(timer);
+                    } else {
+                        counter.textContent = Math.floor(current).toLocaleString('sr-RS');
+                    }
+                }, duration / steps);
+            });
+        }
+        
+        // Load bill data and populate fields
+        function loadBillData(bill) {
+            // Add metrics section if applicable
+            renderMetricsSection(bill);
+        }
+        
+        // Render dynamic metrics section based on bill type
+        function renderMetricsSection(bill) {
+            const metricsSection = document.getElementById('metrics-section');
+            
+            if (bill.type === 'electricity' && bill.metrics) {
+                // EPS - Show Viša/Niža Tarifa with chart
+                const total = bill.metrics.vtConsumption + bill.metrics.ntConsumption;
+                const vtPercent = (bill.metrics.vtConsumption / total * 100).toFixed(1);
+                const ntPercent = (bill.metrics.ntConsumption / total * 100).toFixed(1);
+                
+                metricsSection.innerHTML = `
+                    <div class="relative group">
+                        <label class="block mb-2 ml-1 text-sm font-bold uppercase tracking-wider text-neon-cyan" style="text-shadow: 0 0 4px rgba(0, 234, 240, 0.6), 0 0 8px rgba(0, 234, 240, 0.4);">Potrošnja Električne Energije</label>
+                        
+                        <!-- Total Consumption -->
+                        <div class="relative flex items-center bg-white/5 border border-white/10 rounded-xl p-3 backdrop-blur-md shadow-[0_4px_8px_rgba(0,0,0,0.5),inset_0_0_6px_rgba(255,255,255,0.1)] mb-3">
+                            <span class="material-symbols-outlined text-neon-green/80 mr-3 text-3xl">bolt</span>
+                            <div class="flex-1">
+                                <div class="text-lg font-bold text-white" style="text-shadow: 0 0 4px rgba(255, 255, 255, 0.6);">
+                                    ${total.toLocaleString('sr-RS')} kWh
+                                </div>
+                                <div class="text-xs text-gray-400">Ukupna potrošnja</div>
+                            </div>
+                        </div>
+                        
+                        <!-- VT/NT Breakdown Chart -->
+                        <div class="relative bg-white/5 border border-white/10 rounded-xl p-4 backdrop-blur-md shadow-[0_4px_8px_rgba(0,0,0,0.5),inset_0_0_6px_rgba(255,255,255,0.1)]">
+                            <!-- Chart Title -->
+                            <div class="text-sm font-bold text-gray-300 mb-3 text-center">Raspodela potrošnje</div>
+                            
+                            <!-- Bar Chart -->
+                            <div class="flex gap-2 h-32 mb-3">
+                                <!-- Viša Tarifa Bar -->
+                                <div class="flex-1 flex flex-col justify-end">
+                                    <div class="text-xs text-center text-neon-magenta font-bold mb-1 count-up" style="text-shadow: 0 0 4px rgba(255, 0, 217, 0.6);">
+                                        <span class="counter" data-target="${bill.metrics.vtConsumption}">0</span> kWh
+                                    </div>
+                                    <div class="relative rounded-t-lg overflow-hidden bar-fill" style="--bar-height: ${vtPercent}%; background: linear-gradient(to top, rgba(255, 0, 217, 0.8), rgba(255, 0, 217, 0.4)); box-shadow: 0 0 10px rgba(255, 0, 217, 0.5), inset 0 0 10px rgba(255, 255, 255, 0.1);">
+                                        <div class="absolute inset-0 bg-gradient-to-b from-white/20 to-transparent"></div>
+                                    </div>
+                                    <div class="text-xs text-center text-white font-bold mt-2">Viša Tarifa</div>
+                                    <div class="text-[10px] text-center text-gray-400">${vtPercent}%</div>
+                                </div>
+                                
+                                <!-- Niža Tarifa Bar -->
+                                <div class="flex-1 flex flex-col justify-end">
+                                    <div class="text-xs text-center text-neon-cyan font-bold mb-1 count-up" style="text-shadow: 0 0 4px rgba(0, 234, 240, 0.6);">
+                                        <span class="counter" data-target="${bill.metrics.ntConsumption}">0</span> kWh
+                                    </div>
+                                    <div class="relative rounded-t-lg overflow-hidden bar-fill" style="--bar-height: ${ntPercent}%; background: linear-gradient(to top, rgba(0, 234, 240, 0.8), rgba(0, 234, 240, 0.4)); box-shadow: 0 0 10px rgba(0, 234, 240, 0.5), inset 0 0 10px rgba(255, 255, 255, 0.1);">
+                                        <div class="absolute inset-0 bg-gradient-to-b from-white/20 to-transparent"></div>
+                                    </div>
+                                    <div class="text-xs text-center text-white font-bold mt-2">Niža Tarifa</div>
+                                    <div class="text-[10px] text-center text-gray-400">${ntPercent}%</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                metricsSection.style.display = 'block';
+                
+            } else if (bill.type === 'water' && bill.metrics && bill.metrics.waterConsumption) {
+                // Water - Show consumption in liters
+                metricsSection.innerHTML = `
+                    <div class="relative group">
+                        <label class="block mb-2 ml-1 text-sm font-bold uppercase tracking-wider text-neon-cyan" style="text-shadow: 0 0 4px rgba(0, 234, 240, 0.6), 0 0 8px rgba(0, 234, 240, 0.4);">Potrošnja Vode</label>
+                        <div class="relative flex items-center bg-white/5 border border-white/10 rounded-xl p-3 backdrop-blur-md shadow-[0_4px_8px_rgba(0,0,0,0.5),inset_0_0_6px_rgba(255,255,255,0.1)]">
+                            <span class="material-symbols-outlined text-neon-cyan/80 mr-3 text-3xl">water_drop</span>
+                            <div class="flex-1">
+                                <div class="text-lg font-bold text-white" style="text-shadow: 0 0 4px rgba(255, 255, 255, 0.6);">
+                                    ${bill.metrics.waterConsumption.toLocaleString('sr-RS')} L
+                                </div>
+                                <div class="text-xs text-gray-400">Ukupna potrošnja</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                metricsSection.style.display = 'block';
+                
+            } else {
+                // No metrics for this bill type (phone, internet, apartment)
+                metricsSection.style.display = 'none';
+            }
+        }
+        
+        // Navigation functions
+        function goBack() {
+            alert('Vraćanje na početni ekran...');
+            // window.history.back(); or navigate to home
+        }
+        
+        function navigate(page) {
+            alert('Navigacija na: ' + page);
+        }
+        
