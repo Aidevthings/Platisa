@@ -3,6 +3,7 @@ package com.example.platisa.ui.components
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.*
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.test.junit4.createComposeRule
 import com.example.platisa.ui.theme.PlatisaTheme
 import org.junit.Rule

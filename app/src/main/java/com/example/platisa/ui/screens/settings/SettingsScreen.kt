@@ -481,6 +481,28 @@ fun SettingsScreen(
                         var expanded by remember { mutableStateOf(false) }
                         var messageText by remember { mutableStateOf("") }
                         
+                        // Walkthrough Link
+                        SettingsItemCard {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { navController.navigate(Screen.Walkthrough.route) }
+                                    .padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Filled.HelpOutline, contentDescription = null, tint = customColors.neonCyan)
+                                Spacer(Modifier.width(16.dp))
+                                Text(
+                                    text = "Kako koristiti aplikaciju",
+                                    style = TextStyleDropdownTitle
+                                )
+                                Spacer(Modifier.weight(1f))
+                                Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface)
+                            }
+                        }
+                        
+                        Spacer(Modifier.height(12.dp))
+
                         SettingsDropdown(
                             title = "Prijavi Grešku",
                             icon = Icons.Filled.BugReport,

@@ -50,4 +50,5 @@ sealed class Screen(val route: String, val title: String) {
         }
     }
     data object SyncWait : Screen("sync_wait", "Sinhronizacija")
+    data object Walkthrough : Screen("walkthrough", "Uputstvo")
 }

@@ -141,5 +141,8 @@ fun PlatisaNavHost(
                 receiptId = receiptId
             )
         }
+        composable(Screen.Walkthrough.route) {
+            com.example.platisa.ui.screens.help.WalkthroughScreen(navController = navController)
+        }
     }
 }

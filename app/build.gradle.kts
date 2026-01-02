@@ -53,6 +53,10 @@ android {
     }
     kotlinOptions {
         jvmTarget = "1.8"
+        freeCompilerArgs += listOf(
+            "-opt-in=androidx.compose.material3.ExperimentalMaterial3Api",
+            "-opt-in=androidx.compose.foundation.ExperimentalFoundationApi"
+        )
     }
     buildFeatures {
         compose = true
@@ -130,6 +134,7 @@ dependencies {
     implementation("com.tom-roush:pdfbox-android:2.0.27.0")
 
     // --- Utilities ---
+    implementation("com.google.accompanist:accompanist-pager:0.32.0") // For Walkthrough Pager
     implementation("io.coil-kt:coil-compose:2.5.0")
     implementation("io.coil-kt:coil-gif:2.5.0") // Needed for GIF support
     implementation("com.vanniktech:android-image-cropper:4.6.0")
@@ -149,6 +154,9 @@ dependencies {
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
     androidTestImplementation(platform("androidx.compose:compose-bom:2023.08.00"))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    androidTestImplementation("androidx.navigation:navigation-testing:2.7.6")
+    androidTestImplementation("com.google.dagger:hilt-android-testing:2.48")
+    kaptAndroidTest("com.google.dagger:hilt-android-compiler:2.48")
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 
