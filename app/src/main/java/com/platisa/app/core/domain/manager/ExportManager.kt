@@ -23,12 +23,12 @@ object ExportManager {
             
             for (receipt in receipts) {
                 writer.append("${dateFormat.format(receipt.date)},")
-                writer.append("${receipt.merchantName.replace(",", " ")},") // Escape commas
+                writer.append("${receipt.merchantName.replace(",", " ").replace("\n", " ")},")
                 writer.append("${receipt.totalAmount},")
                 writer.append("${receipt.currency},")
                 writer.append("${receipt.paymentStatus},")
-                writer.append("${receipt.invoiceNumber ?: ""},")
-                writer.append("${receipt.externalId ?: ""},")
+                writer.append("${(receipt.invoiceNumber ?: "").replace("\n", "").replace(",", "")},")
+                writer.append("${(receipt.externalId ?: "").replace("\n", "").replace(",", "")},")
                 writer.append("${receipt.originalSource}\n")
             }
             

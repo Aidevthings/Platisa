@@ -51,6 +51,10 @@ class ReceiptRepositoryImpl @Inject constructor(
         }
     }
 
+    override suspend fun getReceiptsInRange(startDate: Long, endDate: Long): List<Receipt> {
+        return receiptDao.getReceiptsInRange(startDate, endDate).map { it.toDomain() }
+    }
+
     override suspend fun getReceiptById(id: Long): Receipt? {
         return receiptDao.getReceiptById(id)?.toDomain()
     }

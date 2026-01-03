@@ -116,7 +116,10 @@ class SettingsViewModel @Inject constructor(
     fun syncNow() {
         launchCatching(showLoading = false) {
             val syncRequest = androidx.work.OneTimeWorkRequestBuilder<com.platisa.app.core.worker.GmailSyncWorker>()
-                .setInputData(androidx.work.workDataOf("force_full_sync" to true))
+                .setInputData(androidx.work.workDataOf(
+                    "force_full_sync" to false,
+                    "lookback_days" to 90
+                ))
                 .build()
             
             workManager.enqueueUniqueWork(
@@ -393,6 +396,7 @@ class SettingsViewModel @Inject constructor(
     fun importCsv(uri: android.net.Uri) {
         launchCatching {
             var importedCount = 0
+            var updatedCount = 0
             var skippedCount = 0
             
             context.contentResolver.openInputStream(uri)?.use { inputStream ->
@@ -406,6 +410,7 @@ class SettingsViewModel @Inject constructor(
                 }
                 
                 val dateFormat = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+                val matchedReceiptIds = mutableSetOf<Long>() // Track matched IDs to prevent greedy matching
                 
                 while (reader.readLine().also { line = it } != null) {
                     try {
@@ -414,44 +419,171 @@ class SettingsViewModel @Inject constructor(
                         
                         val dateStr = parts[0]
                         val merchant = parts[1]
-                        val amount = java.math.BigDecimal(parts[2])
+                        val amountStr = parts[2].trim()
+                        
+                        // Robust Amount Parsing (Handles "3299.00" and "3.299,00")
+                        val amount = try {
+                            // 1. Try standard US/Code format first
+                            java.math.BigDecimal(amountStr)
+                        } catch (e: Exception) {
+                            try {
+                                // 2. Try European/Serbian format (swap dot and comma)
+                                // Remove thousands separator (dot), replace decimal (comma) with dot
+                                // Example: "3.299,00" -> "3299.00"
+                                val clean = amountStr.replace(".", "").replace(",", ".")
+                                java.math.BigDecimal(clean)
+                            } catch (e2: Exception) {
+                                // 3. Log error and skip
+                                android.util.Log.e("SettingsViewModel", "Failed to parse amount: $amountStr from line: $line")
+                                continue
+                            }
+                        }
+                        
+                        // Fix for Ambiguous "3.299" (Thousands vs Decimals)
+                        // If amount is small (< 1000) and has 3 decimal places (e.g. 3.299),
+                        // and currency is RSD, it is ALMOST CERTAINLY 3299 RSD (thousands separator), not 3.29 RSD.
+                        // Standard BigDecimal behavior: "3.299" -> 3.299
+                        // We convert it to 3299 if it fits the pattern.
+                        var finalAmount = amount
+                        if (amount.toDouble() > 0 && amount.toDouble() < 100 && amount.scale() == 3 && parts.getOrElse(3) { "RSD" }.uppercase() == "RSD") {
+                             finalAmount = amount.multiply(java.math.BigDecimal(1000))
+                             android.util.Log.w("SettingsViewModel", "Ambiguous amount detected: $amountStr passed as $amount, auto-corrected to $finalAmount")
+                        }
+
                         val currency = parts.getOrElse(3) { "RSD" }
                         val statusStr = parts.getOrElse(4) { "UNPAID" }
                         val invoiceNum = parts.getOrElse(5) { "" }.takeIf { it.isNotEmpty() }
                         val extId = parts.getOrElse(6) { "" }.takeIf { it.isNotEmpty() }
                         val source = parts.getOrElse(7) { "IMPORTED" }
                         
-                        // Deduplication Check
-                        var exists = false
-                        if (invoiceNum != null) {
-                            if (repository.getReceiptByInvoiceNumber(invoiceNum) != null) exists = true
+                        val paymentStatus = try { 
+                            com.platisa.app.core.domain.model.PaymentStatus.valueOf(statusStr) 
+                        } catch(e: Exception) { 
+                            com.platisa.app.core.domain.model.PaymentStatus.UNPAID 
                         }
-                        if (!exists && extId != null) {
-                            // We don't have getByExternalId exposed in Repo easily, but usually InvoiceNum is enough.
-                            // However, Gmail receipts rely on External ID.
-                            // Let's rely on InvoiceNumber (or hash) for now as generic check.
-                            // If user exports from HERE, they have invoice numbers.
+
+                        // UNIVERSAL MATCHING logic (3-Factor: Merchant + Amount + Date)
+                        // User explicitly requested to IGNORE InvoiceNumber and ExternalId for matching
+                        // to prevent duplicates caused by inconsistent IDs.
+
+                        // 1. Search DB for candidates
+                        // CRITICAL FIX: Payment Date (CSV) is usually 15-30 days AFTER Bill Date (DB).
+                        // So we must look BACKWARDS from the CSV date.
+                        // Range: [PaymentDate - 120 days] to [PaymentDate + 10 days] (User requested 120 days/4 months)
+                        
+                        val targetDate = try { dateFormat.parse(dateStr)!! } catch (e: Exception) { java.util.Date() }
+                        // WIDE NET SEARCH
+                         // Range: [TargetDate - 240 days] to [TargetDate + 30 days]
+                         // We pull a massive window (8 months) to handle old unpaid bills or date format errors.
+                        val startRange = java.util.Calendar.getInstance().apply { time = targetDate; add(java.util.Calendar.DAY_OF_YEAR, -240) }.time.time
+                        val endRange = java.util.Calendar.getInstance().apply { time = targetDate; add(java.util.Calendar.DAY_OF_YEAR, 30) }.time.time
+                        
+                        // Single massive fetch
+                        val allCandidates = repository.getReceiptsInRange(startRange, endRange).distinctBy { it.id }
+                        
+                        // 2. Filter by Merchant Name AND Amount in Memory
+                        val existingReceipt = allCandidates.find { candidate ->
+                            // STICKY MATCH: Skip if already used in this session to prevent greedy matching
+                            if (matchedReceiptIds.contains(candidate.id)) return@find false
+                            
+                            // Amount Check (Robust BigDecimal comparison)
+                            // Widen tolerance to 2.0 to handle weird fee structures
+                             val diff = candidate.totalAmount.subtract(finalAmount).abs()
+                            val amountMatch = diff.toDouble() < 2.0
+                            
+                            // Check for "Unit Mismatch" (e.g. DB has 4.377 [4 dinars], CSV has 4377.00)
+                            // This handles legacy data where dots were ignored
+                            val diffScale = candidate.totalAmount.multiply(java.math.BigDecimal(1000)).subtract(finalAmount).abs()
+                            val amountMatchScale = diffScale.toDouble() < 2.0
+                            
+                            if (!amountMatch && !amountMatchScale) return@find false
+                            
+                            // Normalize strings for check
+                            val dbName = candidate.merchantName.lowercase().replace(" ", "").replace("-", "").replace(".", "")
+                            val csvName = merchant.lowercase().replace(" ", "").replace("-", "").replace(".", "")
+                            
+                            // Direct match with normalized strings
+                            var match = dbName.contains(csvName) || csvName.contains(dbName)
+                            
+                            // Alias match
+                            if (!match) {
+                                val aliases = mapOf(
+                                    "mts" to listOf("telekom", "telekom srbija", "mts"),
+                                    "telekom" to listOf("mts", "telekom srbija", "telekom"),
+                                    "telenor" to listOf("yettel", "telenor", "mobi banka", "mobibanka"),
+                                    "yettel" to listOf("telenor", "yettel", "mobi banka", "mobibanka"),
+                                    "eps" to listOf("eps", "elektroprivreda", "struja", "eps distribucija", "eps snabdevanje"),
+                                    "infostan" to listOf("jkp infostan", "infostan tehnologije", "infostan"),
+                                    "sbb" to listOf("sbb", "serbian broadband"),
+                                    "a1" to listOf("vip", "vip mobile", "a1"),
+                                    "vip" to listOf("a1", "vip", "vip mobile")
+                                )
+                                
+                                for ((key, values) in aliases) {
+                                    val safeKey = key.replace(" ", "")
+                                    if (csvName.contains(safeKey) && values.any { dbName.contains(it.replace(" ", "")) }) match = true
+                                    if (dbName.contains(safeKey) && values.any { csvName.contains(it.replace(" ", "")) }) match = true
+                                }
+                            }
+                            match
                         }
-                        
-                        if (exists) {
-                            skippedCount++
-                            continue
+
+                        if (existingReceipt != null) {
+                            // MATCH FOUND -> UPDATE STATUS
+                            matchedReceiptIds.add(existingReceipt.id) // Mark as used
+                            
+                            var needsUpdate = false
+                            var receiptToUpdate = existingReceipt
+
+                            // If CSV says PAID and DB says UNPAID, update it
+                            // Also update if DB shows date as Today (rescan) but CSV has real historical date
+                            if (paymentStatus == com.platisa.app.core.domain.model.PaymentStatus.PAID && 
+                                existingReceipt.paymentStatus != com.platisa.app.core.domain.model.PaymentStatus.PAID) {
+                                receiptToUpdate = receiptToUpdate.copy(paymentStatus = com.platisa.app.core.domain.model.PaymentStatus.PAID)
+                                needsUpdate = true
+                            }
+                            
+                            // Also update Source if missing
+                            if (existingReceipt.originalSource.isEmpty() && source.isNotEmpty()) {
+                                 receiptToUpdate = receiptToUpdate.copy(originalSource = source)
+                                 needsUpdate = true
+                            }
+                            
+                            if (needsUpdate) {
+                                repository.updateReceipt(receiptToUpdate)
+                                updatedCount++
+                            } else {
+                                skippedCount++
+                            }
+                        } else {
+                            // NO MATCH -> INSERT NEW
+                            // Log why we missed it (DEBUG)
+                            android.util.Log.w("SettingsViewModel", "NO MATCH for: $merchant ($finalAmount). Candidates searched: ${allCandidates.size}")
+                            if (allCandidates.isNotEmpty()) {
+                                 allCandidates.forEach { 
+                                     val diff = it.totalAmount.subtract(finalAmount).abs()
+                                     android.util.Log.w("SettingsViewModel", "   Candidate: ${it.merchantName} - ${it.totalAmount} (Diff: $diff) Date: ${it.date}")
+                                 }
+                            }
+                            
+                            // NO MATCH -> INSERT NEW
+                            val receipt = com.platisa.app.core.domain.model.Receipt(
+                                merchantName = merchant,
+                                date = targetDate,
+                                totalAmount = finalAmount, // Use the corrected amount
+                                currency = currency,
+                                paymentStatus = paymentStatus,
+                                invoiceNumber = invoiceNum, 
+                                externalId = extId,
+                                originalSource = source,
+                                imagePath = "" 
+                            )
+                            val newId = repository.insertReceipt(receipt)
+                            matchedReceiptIds.add(newId) // Also track new ones just in case
+                            importedCount++
                         }
-                        
-                        val receipt = com.platisa.app.core.domain.model.Receipt(
-                            merchantName = merchant,
-                            date = try { dateFormat.parse(dateStr)!! } catch (e: Exception) { java.util.Date() },
-                            totalAmount = amount,
-                            currency = currency,
-                            paymentStatus = try { com.platisa.app.core.domain.model.PaymentStatus.valueOf(statusStr) } catch(e: Exception) { com.platisa.app.core.domain.model.PaymentStatus.UNPAID },
-                            invoiceNumber = invoiceNum,
-                            externalId = extId,
-                            originalSource = source,
-                            imagePath = "" // No image for imported
-                        )
-                        
-                        repository.insertReceipt(receipt)
-                        importedCount++
+
+
                         
                     } catch (e: Exception) {
                         e.printStackTrace()
@@ -460,7 +592,7 @@ class SettingsViewModel @Inject constructor(
                 }
             }
             
-            SnackbarManager.showMessage("Import završen: $importedCount uvezeno, $skippedCount preskočeno (duplikati)")
+            SnackbarManager.showMessage("Import: $importedCount novih, $updatedCount ažurirano")
         }
     }
 

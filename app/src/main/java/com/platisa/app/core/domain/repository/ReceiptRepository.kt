@@ -10,6 +10,7 @@ interface ReceiptRepository {
     fun getAllReceipts(): Flow<List<Receipt>>
     fun searchReceipts(query: String): Flow<List<Receipt>>
     fun getReceiptsByFilter(startDate: Long, endDate: Long, minAmount: Double, maxAmount: Double): Flow<List<Receipt>>
+    suspend fun getReceiptsInRange(startDate: Long, endDate: Long): List<Receipt>
     suspend fun getReceiptById(id: Long): Receipt?
     suspend fun getReceiptByInvoiceNumber(invoiceNumber: String): Receipt?  // For deduplication
     suspend fun getReceiptsByAmount(amount: java.math.BigDecimal): List<Receipt> // For fuzzy deduplication
