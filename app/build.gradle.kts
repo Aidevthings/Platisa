@@ -115,8 +115,8 @@ dependencies {
     implementation("androidx.camera:camera-camera2:1.3.1")
     implementation("androidx.camera:camera-lifecycle:1.3.1")
     implementation("androidx.camera:camera-view:1.3.1")
-    implementation("com.google.mlkit:text-recognition:16.0.0")  // Supports both Latin and Cyrillic
-    implementation("com.google.mlkit:barcode-scanning:17.2.0")
+    implementation("com.google.mlkit:text-recognition:16.0.1")  // Supports both Latin and Cyrillic
+    implementation("com.google.mlkit:barcode-scanning:17.3.0")
     implementation("com.google.android.gms:play-services-code-scanner:16.1.0")  // Native Google QR Scanner UI
     
     // --- ZXing (QR Code Generation) ---
