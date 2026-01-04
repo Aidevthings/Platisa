@@ -417,10 +417,44 @@ class SettingsViewModel @Inject constructor(
                         val parts = line!!.split(",")
                         if (parts.size < 3) continue
                         
-                        val dateStr = parts[0]
-                        val merchant = parts[1]
-                        val amountStr = parts[2].trim()
+                        // SMART PARSING: Handle shifted columns (e.g. merchant names with commas)
+                        // Find the Currency column index (usually "RSD")
+                        val currencyPartIndex = parts.indexOfLast { it.trim().uppercase() in listOf("RSD", "EUR", "USD", "DIN") }
                         
+                        var dateStr = parts[0]
+                        var merchant = parts[1]
+                        var amountStr = parts[2].trim()
+                        var currency = "RSD"
+                        var statusStr = "UNPAID"
+                        var invoiceNum = ""
+                        var extId = ""
+                        var source = "IMPORTED"
+
+                        if (currencyPartIndex > 1) {
+                            // Column mapping based on anchor "Currency"
+                            // Date | Merchant Part 1 | ... | Merchant Part N | Amount | Currency | Status | ...
+                            
+                            currency = parts[currencyPartIndex].trim()
+                            amountStr = parts[currencyPartIndex - 1].trim()
+                            
+                            // Merchant is everything between Date (0) and Amount (currency - 1)
+                            // We join them back together in case it was split by commas
+                            merchant = parts.subList(1, currencyPartIndex - 1).joinToString(" ") { it.trim() }.replace("  ", " ")
+                            
+                            // Capture other fields if available
+                            if (parts.size > currencyPartIndex + 1) statusStr = parts[currencyPartIndex + 1]
+                            if (parts.size > currencyPartIndex + 2) invoiceNum = parts[currencyPartIndex + 2]
+                            if (parts.size > currencyPartIndex + 3) extId = parts[currencyPartIndex + 3]
+                            if (parts.size > currencyPartIndex + 4) source = parts[currencyPartIndex + 4]
+                        } else {
+                            //  Fallback to standard positions if no currency found
+                            if (parts.size > 3) currency = parts[3]
+                            if (parts.size > 4) statusStr = parts[4]
+                            if (parts.size > 5) invoiceNum = parts[5]
+                            if (parts.size > 6) extId = parts[6]
+                            if (parts.size > 7) source = parts[7]
+                        }
+
                         // Robust Amount Parsing (Handles "3299.00" and "3.299,00")
                         val amount = try {
                             // 1. Try standard US/Code format first
@@ -428,34 +462,23 @@ class SettingsViewModel @Inject constructor(
                         } catch (e: Exception) {
                             try {
                                 // 2. Try European/Serbian format (swap dot and comma)
-                                // Remove thousands separator (dot), replace decimal (comma) with dot
-                                // Example: "3.299,00" -> "3299.00"
                                 val clean = amountStr.replace(".", "").replace(",", ".")
                                 java.math.BigDecimal(clean)
                             } catch (e2: Exception) {
                                 // 3. Log error and skip
-                                android.util.Log.e("SettingsViewModel", "Failed to parse amount: $amountStr from line: $line")
+                                android.util.Log.e("SettingsViewModel", "Failed to parse amount: '$amountStr' from line: $line")
                                 continue
                             }
                         }
                         
                         // Fix for Ambiguous "3.299" (Thousands vs Decimals)
-                        // If amount is small (< 1000) and has 3 decimal places (e.g. 3.299),
-                        // and currency is RSD, it is ALMOST CERTAINLY 3299 RSD (thousands separator), not 3.29 RSD.
-                        // Standard BigDecimal behavior: "3.299" -> 3.299
-                        // We convert it to 3299 if it fits the pattern.
                         var finalAmount = amount
-                        if (amount.toDouble() > 0 && amount.toDouble() < 100 && amount.scale() == 3 && parts.getOrElse(3) { "RSD" }.uppercase() == "RSD") {
+                        if (amount.toDouble() > 0 && amount.toDouble() < 100 && amount.scale() == 3 && currency.uppercase() == "RSD") {
                              finalAmount = amount.multiply(java.math.BigDecimal(1000))
                              android.util.Log.w("SettingsViewModel", "Ambiguous amount detected: $amountStr passed as $amount, auto-corrected to $finalAmount")
                         }
 
-                        val currency = parts.getOrElse(3) { "RSD" }
-                        val statusStr = parts.getOrElse(4) { "UNPAID" }
-                        val invoiceNum = parts.getOrElse(5) { "" }.takeIf { it.isNotEmpty() }
-                        val extId = parts.getOrElse(6) { "" }.takeIf { it.isNotEmpty() }
-                        val source = parts.getOrElse(7) { "IMPORTED" }
-                        
+
                         val paymentStatus = try { 
                             com.platisa.app.core.domain.model.PaymentStatus.valueOf(statusStr) 
                         } catch(e: Exception) { 
