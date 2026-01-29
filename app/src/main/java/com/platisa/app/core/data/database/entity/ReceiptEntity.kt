@@ -24,6 +24,8 @@ data class ReceiptEntity(
     val totalAmount: BigDecimal,
     val currency: String = "RSD",
     val imagePath: String,
+    val currentMonthAmount: BigDecimal? = null,
+    val previousDebtAmount: BigDecimal? = null,
     val qrCodeData: String? = null,
     val invoiceNumber: String? = null,
     
@@ -38,12 +40,15 @@ data class ReceiptEntity(
     val syncStatus: SyncStatus = SyncStatus.PENDING,
     val paymentStatus: PaymentStatus = PaymentStatus.UNPAID,
     val sourceType: SourceType = SourceType.CAMERA,
+    val sourceEmail: String? = null,  // Gmail account email for cloud sync (preserved separately from enum)
     val externalId: String? = null,
     val createdAt: Date = Date(),
     val updatedAt: Date = Date(),
     val savedQrUri: String? = null,
     val recipientName: String? = null,
-    val recipientAddress: String? = null
+    val recipientAddress: String? = null,
+    val payerName: String? = null,
+    val payerAddress: String? = null
 )
 
 enum class SyncStatus {

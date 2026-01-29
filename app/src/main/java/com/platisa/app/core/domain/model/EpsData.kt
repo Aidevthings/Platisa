@@ -9,6 +9,9 @@ data class EpsData(
     val consumptionVt: BigDecimal?,
     val consumptionNt: BigDecimal?,
     val totalConsumption: BigDecimal?,
+    // Monetary fields (Smart Parsing)
+    val currentMonthAmount: BigDecimal? = null,
+    val previousDebtAmount: BigDecimal? = null,
     // Payment ID fields
     val naplatniBroj: String?,           // Naplatni broj (Account number)
     val invoiceNumber: String?,          // Racun broj (Invoice number)

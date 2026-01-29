@@ -14,6 +14,7 @@ import com.platisa.app.core.domain.model.EpsData
 import com.platisa.app.core.domain.model.ProductSearchResult
 import com.platisa.app.core.domain.model.Receipt
 import com.platisa.app.core.domain.repository.ReceiptRepository
+import com.platisa.app.core.domain.SecureStorage // Added import
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
@@ -24,7 +25,9 @@ class ReceiptRepositoryImpl @Inject constructor(
     private val tagDao: TagDao,
     private val epsDao: EpsDao,
     private val duplicateDetector: BillDuplicateDetector,
-    private val preferenceManager: com.platisa.app.core.data.preferences.PreferenceManager
+    private val preferenceManager: com.platisa.app.core.data.preferences.PreferenceManager,
+    private val firestoreRepository: com.platisa.app.core.data.repository.FirestoreRepository, // Injected
+    private val secureStorage: com.platisa.app.core.domain.SecureStorage
 ) : ReceiptRepository {
 
     override fun getAllReceipts(): Flow<List<Receipt>> {
@@ -170,12 +173,68 @@ class ReceiptRepositoryImpl @Inject constructor(
     }
 
     override suspend fun updateReceipt(receipt: Receipt) {
+        // 1. Update local DB
         receiptDao.updateReceipt(receipt.toEntity())
+        
+        // 2. Sync Status to Firestore
+        syncPaidStatusToCloud(receipt)
     }
 
     override suspend fun deleteReceipt(receipt: Receipt) {
         receiptDao.deleteReceipt(receipt.toEntity())
+        
+        // Check if we need to remove paid status (if user deletes a paid bill)
+        if (receipt.paymentStatus == com.platisa.app.core.domain.model.PaymentStatus.PAID) {
+            syncPaidStatusToCloud(receipt, isPaid = false)
+        }
     }
+
+    /**
+     * Helper to sync paid status to Firestore using the email from `originalSource`.
+     */
+    private suspend fun syncPaidStatusToCloud(receipt: Receipt, isPaid: Boolean? = null) {
+        try {
+            val isActuallyPaid = isPaid ?: (receipt.paymentStatus == com.platisa.app.core.domain.model.PaymentStatus.PAID)
+            val externalId = receipt.externalId
+            
+            // 🔍 DEBUG: Log all relevant fields
+            android.util.Log.d("ReceiptRepository", "🔍 ============= SYNC PAID STATUS DEBUG =============")
+            android.util.Log.d("ReceiptRepository", "🔍 Receipt ID: ${receipt.id}")
+            android.util.Log.d("ReceiptRepository", "🔍 External ID: $externalId")
+            android.util.Log.d("ReceiptRepository", "🔍 Original Source: ${receipt.originalSource}")
+            android.util.Log.d("ReceiptRepository", "🔍 Merchant: ${receipt.merchantName}")
+            android.util.Log.d("ReceiptRepository", "🔍 Is Paid: $isActuallyPaid")
+            android.util.Log.d("ReceiptRepository", "🔍 Metadata: ${receipt.metadata}")
+            
+            // UNIVERSAL SHARING LOGIC: 
+            // 1. If it's a Gmail receipt, sync to that Gmail's shared folder.
+            // 2. If it's Manual/Camera, sync to the Main User's folder (fallback).
+            var email = receipt.originalSource
+            
+            android.util.Log.d("ReceiptRepository", "🔍 Step 1 - Raw email from originalSource: $email")
+            
+            // Check if source is a valid email (simple check)
+            if (email == "Manual" || email == "Camera" || email == "GMAIL" || email == "CAMERA" || !email.contains("@")) {
+                val firebaseEmail = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.email
+                android.util.Log.d("ReceiptRepository", "🔍 Step 2 - Not an email, falling back to Firebase: $firebaseEmail")
+                email = firebaseEmail ?: ""
+            }
+
+            if (email.isNotBlank() && !externalId.isNullOrBlank()) {
+                // FORCE LOWERCASE: Firestore IDs are case sensitive, we use lowercase standardization
+                val normalizedEmail = email.lowercase()
+                android.util.Log.d("ReceiptRepository", "☁️ SAVING to Firestore: shared_receipts/$normalizedEmail/receipts/$externalId")
+                android.util.Log.d("ReceiptRepository", "☁️ Syncing SHARED Paid Status ($isActuallyPaid) for $normalizedEmail / $externalId")
+                firestoreRepository.savePaidStatus(normalizedEmail, externalId, isActuallyPaid)
+            } else {
+                android.util.Log.w("ReceiptRepository", "⚠️ SKIPPED SYNC: email='$email' (blank=${email.isBlank()}), externalId='$externalId' (null/blank=${externalId.isNullOrBlank()})")
+            }
+            android.util.Log.d("ReceiptRepository", "🔍 =====================================================")
+        } catch (e: Exception) {
+            android.util.Log.e("ReceiptRepository", "⚠️ Failed to sync paid status to cloud: ${e.message}")
+        }
+    }
+
 
     override suspend fun getReceiptByPath(imagePath: String): Receipt? {
         return receiptDao.getReceiptByPath(imagePath)?.toDomain()
@@ -327,6 +386,95 @@ class ReceiptRepositoryImpl @Inject constructor(
         android.util.Log.d("ReceiptRepository", "🗑️ Brisanje SVIH EPS podataka...")
         epsDao.deleteAllEpsData()
         android.util.Log.d("ReceiptRepository", "✅ Svi EPS podaci obrisani")
+    }
+
+    override suspend fun deleteGmailReceipts() {
+        android.util.Log.d("ReceiptRepository", "🗑️ Brisanje SAMO GMAIL računa...")
+        receiptDao.deleteReceiptsBySource(com.platisa.app.core.data.database.entity.SourceType.GMAIL)
+        android.util.Log.d("ReceiptRepository", "✅ Gmail računi obrisani (ostali sačuvani)")
+    }
+
+    override suspend fun markPastBillsAsPaid(merchantName: String, excludeReceiptId: Long) {
+        // 1. Fetch ALL unpaid bills to perform fuzzy matching in memory
+        // SQL is too strict ("Mts" != "Mts d.o.o."), so we handle it here.
+        val allReceipts = receiptDao.getAllReceiptsList()
+        val unpaidCandidates = allReceipts.filter { 
+            it.paymentStatus == com.platisa.app.core.data.database.entity.PaymentStatus.UNPAID && 
+            it.id != excludeReceiptId 
+        }
+
+        val matchedBills = unpaidCandidates.filter { candidate ->
+            val dbName = candidate.merchantName.lowercase().replace(" ", "").replace(".", "").replace("-", "")
+            val targetName = merchantName.lowercase().replace(" ", "").replace(".", "").replace("-", "")
+            
+            // A. Direct Fuzzy Match
+            var match = dbName.contains(targetName) || targetName.contains(dbName)
+            
+            // B. Alias Match (Critical for OCR variations)
+            if (!match) {
+                val aliases = mapOf(
+                    "mts" to listOf("telekom", "telekom srbija", "mts"),
+                    "telekom" to listOf("mts", "telekom srbija", "telekom"),
+                    "telenor" to listOf("yettel", "telenor", "mobi banka", "mobibanka"),
+                    "yettel" to listOf("telenor", "yettel", "mobi banka", "mobibanka"),
+                    "eps" to listOf("eps", "elektroprivreda", "struja", "eps distribucija", "eps snabdevanje"),
+                    "infostan" to listOf("jkp infostan", "infostan tehnologije", "infostan"),
+                    "sbb" to listOf("sbb", "serbian broadband"),
+                    "a1" to listOf("vip", "vip mobile", "a1"),
+                    "vip" to listOf("a1", "vip", "vip mobile")
+                )
+                
+                for ((key, values) in aliases) {
+                    val safeKey = key.replace(" ", "")
+                    // Check if target matches an alias Key or Value
+                    val isTargetInGroup = targetName.contains(safeKey) || values.any { targetName.contains(it.replace(" ", "")) }
+                    
+                    if (isTargetInGroup) {
+                        // If target is in this group, check if candidate is also in this group
+                        if (dbName.contains(safeKey) || values.any { dbName.contains(it.replace(" ", "")) }) {
+                            match = true
+                            break
+                        }
+                    }
+                }
+            }
+            
+            if (match) {
+                 android.util.Log.d("ReceiptRepository", "      ✅ MATCH FOUND: '${candidate.merchantName}' matches '$merchantName'")
+            }
+            match
+        }
+
+        if (matchedBills.isNotEmpty()) {
+            android.util.Log.d("ReceiptRepository", "🔄 CASCADE: Marking ${matchedBills.size} bills as PAID.")
+            
+            matchedBills.forEach { receipt ->
+                android.util.Log.d("ReceiptRepository", "   -> Updating Bill ${receipt.id} (${receipt.merchantName})")
+                val updated = receipt.copy(
+                    paymentStatus = com.platisa.app.core.data.database.entity.PaymentStatus.PAID,
+                    updatedAt = java.util.Date(),
+                    metadata = (receipt.metadata ?: "") + " [Cascaded]"
+                )
+                receiptDao.updateReceipt(updated)
+                
+                // Cloud Sync
+                syncPaidStatusToCloud(updated.toDomain(), isPaid = true)
+            }
+        } else {
+            android.util.Log.w("ReceiptRepository", "⚠️ NO MATCHING PAST BILLS found for '$merchantName'")
+        }
+    }
+
+
+    override suspend fun isLatestReceipt(merchantName: String, receiptDate: java.util.Date): Boolean {
+        val latestDateTimestamp = receiptDao.getLatestReceiptDateForMerchant(merchantName) ?: return true
+        // If current receipt date is >= latest date in DB, it is the latest (or one of them).
+        // Using timestamp comparison
+        return receiptDate.time >= latestDateTimestamp
+    }
+
+    override suspend fun deleteAllPaidStatuses(sourceEmail: String) {
+        firestoreRepository.deleteAllPaidStatuses(sourceEmail)
     }
 
     override suspend fun insertReceipts(receipts: List<Receipt>): List<Long> {

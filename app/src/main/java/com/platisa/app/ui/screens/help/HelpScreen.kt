@@ -44,7 +44,11 @@ fun HelpScreen(
                     ) 
                 },
                 navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
+                    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+                    IconButton(onClick = { 
+                        haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                        navController.popBackStack() 
+                    }) {
                         Icon(
                             Icons.Default.ArrowBack,
                             contentDescription = "Nazad",

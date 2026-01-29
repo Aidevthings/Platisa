@@ -626,7 +626,7 @@ fun TutorialOverlay(
             ),
             TutorialStep(
                 title = "Važan Savet",
-                description = "Platiša radi isključivo putem Gmail-a. Savetujemo da sve vaše e-račune (EPS, Infostan, Telekom...) preusmerite na jedan Gmail nalog kako bi ih aplikacija sve pronašla na jednom mestu.",
+                description = "Platiša radi isključivo putem Gmail-a. Savetujemo da sve vaše e-račune (EPS, Infostan, Telekom...) preusmerite na jedan Gmail nalog kako bi ih aplikacija sve pronašla na jednom mestu. Takođe, možete povezati više Gmail naloga ako želite.",
                 targetId = "gmail_tip", // Specific ID to center card w/o spotlight
                 icon = Icons.Default.Email,
                 iconColor = blue
@@ -715,35 +715,51 @@ fun TutorialOverlay(
             
             // Check if current step targets nav bar icons
             val isNavBarStep = steps[currentStep].targetId in listOf("pijaca_nav", "statistics_nav")
-            val bottomPadding = if (isNavBarStep) 100.dp else 16.dp
+            
+            // Fixed Controls at the bottom (Lifted up EVEN MORE per user request)
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 160.dp) // Lifted another 80dp (Total 160dp)
+                    .zIndex(2000f)
+            ) {
+                 TutorialControls(
+                     currentStepNumber = currentStep + 1,
+                     totalSteps = steps.size,
+                     activeColor = steps[currentStep].iconColor,
+                     onNext = {
+                        if (currentStep < steps.size - 1) {
+                            currentStep++
+                        } else {
+                            SpotlightRegistry.clear()
+                            onDismiss()
+                        }
+                     },
+                     onSkip = {
+                        SpotlightRegistry.clear()
+                        onDismiss()
+                     },
+                     isLastStep = currentStep == steps.size - 1
+                 )
+            }
+
+            // Main Content Area (Lifted to avoid controls)
+            // Controls start at 160dp from bottom and go up to ~240dp.
+            // Need >240dp clearance.
+            val contentBottomPadding = if (isNavBarStep) 320.dp else 300.dp
             
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = bottomPadding)
+                    .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = contentBottomPadding)
                     .zIndex(1002f),
                 contentAlignment = if (isNavBarStep) Alignment.Center else Alignment.BottomCenter
             ) {
                 // For nav bar steps, center the card
                 if (isNavBarStep) {
-                    TutorialCard(
-                        step = steps[currentStep],
-                        currentStepNumber = currentStep + 1,
-                        totalSteps = steps.size,
-                        onNext = {
-                            if (currentStep < steps.size - 1) {
-                                currentStep++
-                            } else {
-                                SpotlightRegistry.clear()
-                                onDismiss()
-                            }
-                        },
-                        onSkip = {
-                            SpotlightRegistry.clear()
-                            onDismiss()
-                        },
-                        isLastStep = currentStep == steps.size - 1
-                    )
+                    TutorialCard(step = steps[currentStep])
                 } else {
                     val showMockBill = steps[currentStep].showMockBillCard && steps[currentStep].mockBillStatus != null
                     
@@ -763,24 +779,7 @@ fun TutorialOverlay(
                             }
                             
                             // Tutorial Card
-                            TutorialCard(
-                                step = steps[currentStep],
-                                currentStepNumber = currentStep + 1,
-                                totalSteps = steps.size,
-                                onNext = {
-                                    if (currentStep < steps.size - 1) {
-                                        currentStep++
-                                    } else {
-                                        SpotlightRegistry.clear()
-                                        onDismiss()
-                                    }
-                                },
-                                onSkip = {
-                                    SpotlightRegistry.clear()
-                                    onDismiss()
-                                },
-                                isLastStep = currentStep == steps.size - 1
-                            )
+                            TutorialCard(step = steps[currentStep])
                         }
                     }
                 }
@@ -934,17 +933,10 @@ fun NeonBorder(
 
 @Composable
 fun TutorialCard(
-    step: TutorialStep,
-    currentStepNumber: Int,
-    totalSteps: Int,
-    onNext: () -> Unit,
-    onSkip: () -> Unit,
-    isLastStep: Boolean
+    step: TutorialStep
 ) {
     val isDark = isSystemInDarkTheme()
     val textColor = if (isDark) Color.White else Color.Black
-    val buttonBorderColor = if (isDark) Color.White.copy(alpha = 0.5f) else Color.Black.copy(alpha = 0.5f)
-    val buttonTextColor = if (isDark) Color.White else Color.Black
     
     // Providna kartica bez pozadine
     Column(
@@ -1043,62 +1035,6 @@ fun TutorialCard(
                     lineHeight = 22.sp
                 )
             }
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            ProgressDots(
-                currentStep = currentStepNumber,
-                totalSteps = totalSteps,
-                activeColor = step.iconColor
-            )
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                OutlinedButton(
-                    onClick = onSkip,
-                    modifier = Modifier.weight(1f).height(56.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = buttonTextColor
-                    ),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, buttonBorderColor)
-                ) {
-                    Text("Preskoči", fontSize = 18.sp)
-                }
-                
-                Button(
-                    onClick = onNext,
-                    modifier = Modifier.weight(1f).height(56.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = step.iconColor.copy(alpha = 0.3f)
-                    ),
-                    border = androidx.compose.foundation.BorderStroke(2.dp, step.iconColor)
-                ) {
-                    Row(
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = if (isLastStep) "Završi" else "Sledeće",
-                            color = Color.White,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        if (!isLastStep) {
-                            Spacer(Modifier.width(4.dp))
-                            Icon(
-                                Icons.Default.ArrowForward,
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                    }
-                }
-            }
         }
 }
 
@@ -1146,6 +1082,78 @@ fun Modifier.tutorialTarget(id: String): Modifier = this.onGloballyPositioned { 
     // Register the raw bounds without manual offset adjustment
     // The overlay is drawn in the same coordinate space, so no offset needed
     SpotlightRegistry.register(id, bounds)
+}
+
+@Composable
+fun TutorialControls(
+    currentStepNumber: Int,
+    totalSteps: Int,
+    activeColor: Color,
+    onNext: () -> Unit,
+    onSkip: () -> Unit,
+    isLastStep: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val isDark = isSystemInDarkTheme()
+    val buttonBorderColor = if (isDark) Color.White.copy(alpha = 0.5f) else Color.Black.copy(alpha = 0.5f)
+    val buttonTextColor = if (isDark) Color.White else Color.Black
+    
+    Column(modifier = modifier) {
+        ProgressDots(
+            currentStep = currentStepNumber,
+            totalSteps = totalSteps,
+            activeColor = activeColor
+        )
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            OutlinedButton(
+                onClick = onSkip,
+                modifier = Modifier.weight(1f).height(56.dp),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = buttonTextColor
+                ),
+                border = androidx.compose.foundation.BorderStroke(1.dp, buttonBorderColor)
+            ) {
+                Text("Preskoči", fontSize = 18.sp)
+            }
+            
+            Button(
+                onClick = onNext,
+                modifier = Modifier.weight(1f).height(56.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = activeColor.copy(alpha = 0.3f)
+                ),
+                border = androidx.compose.foundation.BorderStroke(2.dp, activeColor)
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (isLastStep) "Završi" else "Sledeće",
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    if (!isLastStep) {
+                        Spacer(Modifier.width(4.dp))
+                        Icon(
+                            Icons.Default.ArrowForward,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(16.dp)) // Bottom padding
+    }
 }
 
 @Composable

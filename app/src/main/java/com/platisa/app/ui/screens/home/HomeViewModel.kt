@@ -26,27 +26,39 @@ class HomeViewModel @Inject constructor(
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: Context,
     private val repository: ReceiptRepository,
     val preferenceManager: com.platisa.app.core.data.preferences.PreferenceManager,
-    private val secureStorage: com.platisa.app.core.domain.SecureStorage
+    private val secureStorage: com.platisa.app.core.domain.SecureStorage,
+    private val currencyApi: com.platisa.app.core.data.network.CurrencyApi,
+    private val vibrationHelper: com.platisa.app.core.common.VibrationHelper
 ) : BaseViewModel() {
+
+    fun vibrate(type: com.platisa.app.core.common.VibrationHelper.HapticType = com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT) {
+        vibrationHelper.vibrate(type)
+    }
 
     private val _selectedHomePeriod = MutableStateFlow(com.platisa.app.ui.screens.analytics.GraphPeriod.MONTHLY)
     val selectedHomePeriod: StateFlow<com.platisa.app.ui.screens.analytics.GraphPeriod> = _selectedHomePeriod.asStateFlow()
 
     fun setHomePeriod(period: com.platisa.app.ui.screens.analytics.GraphPeriod) {
         _selectedHomePeriod.value = period
+        vibrationHelper.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
     }
 
     private val _currency = MutableStateFlow(secureStorage.getCurrency())
+
     val currency: StateFlow<String> = _currency.asStateFlow()
 
     private val _userName = MutableStateFlow(secureStorage.getUserName())
     val userName: StateFlow<String> = _userName.asStateFlow()
 
+    private val _conversionRate = MutableStateFlow(java.math.BigDecimal(preferenceManager.lastKnownEuroRate.toDouble()))
+    val conversionRate: StateFlow<java.math.BigDecimal> = _conversionRate.asStateFlow()
+
     val receipts: StateFlow<List<Receipt>> = combine(
         repository.getAllReceipts(),
         _selectedHomePeriod,
-        _currency
-    ) { list, selectedPeriod, currentCurrency ->
+        _currency,
+        _conversionRate
+    ) { list, selectedPeriod, currentCurrency, rate ->
         list
             .filter { receipt ->
                 val isUtility = receipt.category == com.platisa.app.core.domain.model.BillCategory.ELECTRICITY ||
@@ -74,17 +86,14 @@ class HomeViewModel @Inject constructor(
             }
             .map { receipt ->
                 // CURRENCY CONVERSION LOGIC
-                // Rate: 1 EUR = 117.5 RSD
-                val conversionRate = java.math.BigDecimal("117.5")
-                
                 if (currentCurrency == "EUR" && receipt.currency == "RSD") {
                     receipt.copy(
-                        totalAmount = receipt.totalAmount.divide(conversionRate, 2, java.math.RoundingMode.HALF_UP),
+                        totalAmount = receipt.totalAmount.divide(rate, 2, java.math.RoundingMode.HALF_UP),
                         currency = "EUR"
                     )
                 } else if (currentCurrency == "RSD" && receipt.currency == "EUR") {
                     receipt.copy(
-                        totalAmount = receipt.totalAmount.multiply(conversionRate),
+                        totalAmount = receipt.totalAmount.multiply(rate),
                         currency = "RSD"
                     )
                 } else {
@@ -173,8 +182,36 @@ class HomeViewModel @Inject constructor(
     private val _celebrationImagePath = MutableStateFlow(secureStorage.getCelebrationImagePath())
     val celebrationImagePath: StateFlow<String?> = _celebrationImagePath.asStateFlow()
 
+
+
     init {
         checkConnectedAccount()
+        fetchLiveRate()
+    }
+
+    private fun fetchLiveRate() {
+        launchCatching(showLoading = false) {
+            val lastFetch = preferenceManager.lastRateFetchTime
+            val currentTime = System.currentTimeMillis()
+            val CACHE_DURATION = 24 * 60 * 60 * 1000L // 24 hours
+
+            if (currentTime - lastFetch > CACHE_DURATION) {
+                try {
+                    val response = currencyApi.getLatestRate()
+                    val newRate = response.rates["RSD"]
+                    if (newRate != null) {
+                        preferenceManager.lastKnownEuroRate = newRate.toFloat()
+                        preferenceManager.lastRateFetchTime = currentTime
+                        _conversionRate.value = java.math.BigDecimal(newRate)
+                        android.util.Log.d("HomeViewModel", "Live rate fetched: $newRate")
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("HomeViewModel", "Failed to fetch live rate", e)
+                }
+            } else {
+                 android.util.Log.d("HomeViewModel", "Using cached rate: ${preferenceManager.lastKnownEuroRate}")
+            }
+        }
     }
 
     private fun checkConnectedAccount() {
@@ -194,36 +231,54 @@ class HomeViewModel @Inject constructor(
     }
 
     fun markReceiptAsPaid(receiptId: Long) {
+        vibrationHelper.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.SUCCESS)
         launchCatching {
             val receipt = repository.getReceiptById(receiptId)
             receipt?.let {
                 // Delete the QR code from gallery if it was saved
                 com.platisa.app.core.common.QrSaveManager.deleteQrFromGallery(context, it.savedQrUri)
 
+                // CASCADE PAYMENT - Check if Total Debt was selected when QR was saved
+                val metadataContainsFlag = it.metadata?.contains("[TOTAL_DEBT_SELECTED]") == true
+                
+                if (metadataContainsFlag) {
+                    try {
+                        repository.markPastBillsAsPaid(it.merchantName, it.id)
+                    } catch (e: Exception) {
+                        android.util.Log.e("HomeViewModel", "CASCADE PAYMENT failed: ${e.message}", e)
+                    }
+                }
+
+                // Clean up the flag from metadata
+                val cleanedMetadata = it.metadata?.replace(" [TOTAL_DEBT_SELECTED]", "") ?: ""
+                
                 repository.updateReceipt(
                     it.copy(
                         paymentStatus = com.platisa.app.core.domain.model.PaymentStatus.PAID,
-                        paymentDate = java.util.Date()  // Set current date as payment date
+                        paymentDate = java.util.Date(),
+                        metadata = cleanedMetadata
                     )
                 )
             }
         }
     }
 
+
     fun refreshProfileData() {
         _userName.value = secureStorage.getUserName()
         _avatarPath.value = secureStorage.getAvatarPath()
         _celebrationImagePath.value = secureStorage.getCelebrationImagePath()
         _currency.value = secureStorage.getCurrency()
+        // Check rate on profile refresh too if needed, or just let init handle it
     }
 
-    private val _isDarkTheme = MutableStateFlow(preferenceManager.isDarkTheme)
-    val isDarkTheme: StateFlow<Boolean> = _isDarkTheme.asStateFlow()
+    // Use single source of truth from PreferenceManager
+    val isDarkTheme: StateFlow<Boolean> = preferenceManager.themeFlow
 
     fun toggleTheme() {
-        val newTheme = !_isDarkTheme.value
-        preferenceManager.isDarkTheme = newTheme
-        _isDarkTheme.value = newTheme
+        vibrationHelper.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
+        // Toggle the value in preferences - this will update the flow automatically
+        preferenceManager.isDarkTheme = !isDarkTheme.value
     }
 }
 

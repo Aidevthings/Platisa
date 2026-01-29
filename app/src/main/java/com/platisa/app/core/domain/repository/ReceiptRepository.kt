@@ -37,5 +37,15 @@ interface ReceiptRepository {
     suspend fun deleteAllReceipts()
     suspend fun deleteAllReceiptItems()
     suspend fun deleteAllEpsData()
+    
+    // Selective delete
+    suspend fun deleteGmailReceipts()
+    
+    // Cascade Payment
+    suspend fun markPastBillsAsPaid(merchantName: String, excludeReceiptId: Long)
+    suspend fun isLatestReceipt(merchantName: String, receiptDate: java.util.Date): Boolean
+    
+    // Testing / Maintenance
+    suspend fun deleteAllPaidStatuses(sourceEmail: String)
 }
 

@@ -12,14 +12,14 @@ plugins {
 
 android {
     namespace = "com.platisa.app"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.platisa.app"
         minSdk = 26
-        targetSdk = 34
-        versionCode = 2
-        versionName = "1.1"
+        targetSdk = 35
+        versionCode = 8
+        versionName = "1.5"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -130,6 +130,11 @@ dependencies {
     implementation("com.google.http-client:google-http-client-gson:1.42.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
 
+    // --- Retrofit & Networking ---
+    implementation("com.squareup.retrofit2:retrofit:2.9.0")
+    implementation("com.squareup.retrofit2:converter-gson:2.9.0")
+    implementation("com.squareup.okhttp3:logging-interceptor:4.11.0")
+
     // --- PDF Processing ---
     implementation("com.tom-roush:pdfbox-android:2.0.27.0")
 
@@ -167,7 +172,11 @@ dependencies {
     implementation(platform("com.google.firebase:firebase-bom:32.7.0"))
     implementation("com.google.firebase:firebase-firestore-ktx")
     implementation("com.google.firebase:firebase-auth-ktx")
+    
+    // --- Google Play Billing ---
+    implementation("com.android.billingclient:billing-ktx:6.1.0")
 }
+
 
 // Dozvoljava reference na biblioteke ako ih nema u libs.versions.toml
 kapt {

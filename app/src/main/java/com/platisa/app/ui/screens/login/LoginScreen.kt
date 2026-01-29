@@ -269,18 +269,21 @@ fun LoginScreen(
                                         // 2. Validate App Signature (SHA-1)
                                         try {
                                             val info = context.packageManager.getPackageInfo(context.packageName, android.content.pm.PackageManager.GET_SIGNATURES)
-                                            for (signature in info.signatures) {
-                                                val md = java.security.MessageDigest.getInstance("SHA-1")
-                                                md.update(signature.toByteArray())
-                                                val digest = md.digest()
-                                                val hexString = StringBuilder()
-                                                for (b in digest) {
-                                                    hexString.append(String.format("%02X:", b))
+                                            val signatures = info.signatures
+                                            if (signatures != null) {
+                                                for (signature in signatures) {
+                                                    val md = java.security.MessageDigest.getInstance("SHA-1")
+                                                    md.update(signature.toByteArray())
+                                                    val digest = md.digest()
+                                                    val hexString = StringBuilder()
+                                                    for (b in digest) {
+                                                        hexString.append(String.format("%02X:", b))
+                                                    }
+                                                    if (hexString.isNotEmpty()) hexString.setLength(hexString.length - 1)
+                                                    // Update State for Error Dialog
+                                                    debugSha1 = hexString.toString()
+                                                    android.util.Log.d("LoginScreen", "DEBUG APP SHA-1: $debugSha1")
                                                 }
-                                                if (hexString.isNotEmpty()) hexString.setLength(hexString.length - 1)
-                                                // Update State for Error Dialog
-                                                debugSha1 = hexString.toString()
-                                                android.util.Log.d("LoginScreen", "DEBUG APP SHA-1: $debugSha1")
                                             }
                                         } catch (e: Exception) {
                                             android.util.Log.e("LoginScreen", "Cannot get signature", e)
@@ -303,8 +306,10 @@ fun LoginScreen(
                                         // Hack: Show it in a long Toast just in case
                                         // Toast.makeText(context, "SHA-1: $currentSha1", Toast.LENGTH_LONG).show()
                                         
-                                        // 4. Launch
-                                        launcher.launch(client.signInIntent)
+                                        // 4. Launch (Force Account Picker by signing out first)
+                                        client.signOut().addOnCompleteListener {
+                                            launcher.launch(client.signInIntent)
+                                        }
                                         
                                     } else {
                                         if (availability.isUserResolvableError(resultCode)) {

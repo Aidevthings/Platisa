@@ -88,8 +88,11 @@ private fun NavColorType.toColor(customColors: PlatisaCustomColors): Color {
 }
 
 @androidx.compose.material3.ExperimentalMaterial3Api
+
 @Composable
-fun MainScreen() {
+fun MainScreen(
+    mainViewModel: com.platisa.app.MainViewModel = androidx.hilt.navigation.compose.hiltViewModel()
+) {
     val navController = rememberNavController()
     val snackbarHostState = remember { SnackbarHostState() }
     val customColors = LocalPlatisaColors.current
@@ -149,105 +152,117 @@ fun MainScreen() {
         val navBackStackEntry by navController.currentBackStackEntryAsState()
         val currentRoute = navBackStackEntry?.destination?.route
         
-        // Routes that should NOT show bottom navigation
-        val fullScreenRoutes = listOf(
-            Screen.Login.route,
-            Screen.SyncWait.route,
-            Screen.ScanTimeframe.route,
-            Screen.Splash.route,
-            Screen.Greetings.route,
-            Screen.SubscriptionPaywall.route
-        )
-        val shouldShowBottomBar = currentRoute?.let { route ->
-            fullScreenRoutes.none { fullScreenRoute ->
-                route.startsWith(fullScreenRoute.substringBefore("?"))
-            }
-        } ?: true
+        // Check if we're on the Splash screen - render it OUTSIDE of Scaffold for true full-screen
+        val isSplashScreen = currentRoute == Screen.Splash.route
         
-        Scaffold(
-            snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
-            bottomBar = {
-                // Only show bottom nav for main app screens
-                if (shouldShowBottomBar) {
-                // Custom Bottom Navigation Bar
-                Surface(
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
-                    contentColor = MaterialTheme.colorScheme.onSurface,
-                    tonalElevation = 0.dp,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .windowInsetsPadding(NavigationBarDefaults.windowInsets) // Handle bottom system inset
-                            .height(65.dp) // Total height of the clickable area
-                            .fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceAround,
-                        verticalAlignment = Alignment.CenterVertically
+        if (isSplashScreen) {
+            // Splash screen renders directly without Scaffold - truly full screen
+            PlatisaNavHost(
+                navController = navController,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            // Routes that should NOT show bottom navigation
+            val fullScreenRoutes = listOf(
+                Screen.Login.route,
+                Screen.SyncWait.route,
+                Screen.ScanTimeframe.route,
+                Screen.Splash.route,
+                Screen.Greetings.route,
+                Screen.SubscriptionPaywall.route
+            )
+            val shouldShowBottomBar = currentRoute?.let { route ->
+                fullScreenRoutes.none { fullScreenRoute ->
+                    route.startsWith(fullScreenRoute.substringBefore("?"))
+                }
+            } ?: true
+            
+            Scaffold(
+                snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
+                bottomBar = {
+                    // Only show bottom nav for main app screens
+                    if (shouldShowBottomBar) {
+                    // Custom Bottom Navigation Bar
+                    Surface(
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                        tonalElevation = 0.dp,
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        val currentDestination = navBackStackEntry?.destination
+                        Row(
+                            modifier = Modifier
+                                .windowInsetsPadding(NavigationBarDefaults.windowInsets) // Handle bottom system inset
+                                .height(65.dp) // Total height of the clickable area
+                                .fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceAround,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            val currentDestination = navBackStackEntry?.destination
 
-                        items.forEach { item ->
-                            val isSelected = currentDestination?.hierarchy?.any { it.route == item.route } == true
-                            val itemColor = item.colorType.toColor(customColors)
+                            items.forEach { item ->
+                                val isSelected = currentDestination?.hierarchy?.any { it.route == item.route } == true
+                                val itemColor = item.colorType.toColor(customColors)
 
-                            Column(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .fillMaxHeight()
-                                    .clickable(
-                                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                                        indication = null
-                                    ) {
-                                        if (item.route == Screen.Home.route) {
-                                            navController.navigate(Screen.Home.route) {
-                                                popUpTo(Screen.Home.route) { inclusive = false }
-                                                launchSingleTop = true
+                                Column(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight()
+                                        .clickable(
+                                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                                            indication = null
+                                        ) {
+                                            mainViewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
+                                            if (item.route == Screen.Home.route) {
+                                                navController.navigate(Screen.Home.route) {
+                                                    popUpTo(Screen.Home.route) { inclusive = false }
+                                                    launchSingleTop = true
+                                                }
+                                            } else {
+                                                navController.navigate(item.route) {
+                                                    popUpTo(Screen.Home.route)
+                                                    launchSingleTop = true
+                                                }
                                             }
-                                        } else {
-                                            navController.navigate(item.route) {
-                                                popUpTo(Screen.Home.route)
-                                                launchSingleTop = true
-                                            }
-                                        }
-                                    },
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center
-                            ) {
-                                val isTutorialItem = item is BottomNavItem.Market || item is BottomNavItem.Analytics
-                                val tutorialModifier = when (item) {
-                                    is BottomNavItem.Market -> Modifier.tutorialTarget("pijaca_nav")
-                                    is BottomNavItem.Analytics -> Modifier.tutorialTarget("statistics_nav")
-                                    else -> Modifier
-                                }
+                                        },
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    val isTutorialItem = item is BottomNavItem.Market || item is BottomNavItem.Analytics
+                                    val tutorialModifier = when (item) {
+                                        is BottomNavItem.Market -> Modifier.tutorialTarget("pijaca_nav")
+                                        is BottomNavItem.Analytics -> Modifier.tutorialTarget("statistics_nav")
+                                        else -> Modifier
+                                    }
 
-                                Box(modifier = tutorialModifier) {
-                                    Icon(
-                                        imageVector = item.icon,
-                                        contentDescription = item.label,
-                                        tint = if (isSelected) itemColor else customColors.textSecondary,
-                                        modifier = Modifier.size(24.dp)
+                                    Box(modifier = tutorialModifier) {
+                                        Icon(
+                                            imageVector = item.icon,
+                                            contentDescription = item.label,
+                                            tint = if (isSelected) itemColor else customColors.textSecondary,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.height(2.dp))
+
+                                    Text(
+                                        text = item.label,
+                                        color = if (isSelected) itemColor else customColors.textSecondary,
+                                        fontSize = 11.sp,
+                                        fontWeight = if (isSelected) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal
                                     )
                                 }
-
-                                Spacer(modifier = Modifier.height(2.dp))
-
-                                Text(
-                                    text = item.label,
-                                    color = if (isSelected) itemColor else customColors.textSecondary,
-                                    fontSize = 11.sp,
-                                    fontWeight = if (isSelected) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal
-                                )
                             }
                         }
                     }
+                    } // End if (shouldShowBottomBar)
                 }
-                } // End if (shouldShowBottomBar)
+            ) { innerPadding ->
+                PlatisaNavHost(
+                    navController = navController,
+                    modifier = Modifier.padding(innerPadding)
+                )
             }
-        ) { innerPadding ->
-            PlatisaNavHost(
-                navController = navController,
-                modifier = Modifier.padding(innerPadding)
-            )
         }
         
         // Tutorial overlay on top of everything

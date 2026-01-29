@@ -22,8 +22,9 @@ class GmailRepositoryImpl @Inject constructor(
         android.util.Log.d("GmailRepo", "fetchReceipts called for account: ${account.email}, ignoreTimestamp: $ignoreTimestamp, lookbackDays: $lookbackDays")
         val files = mutableListOf<File>()
         
-        // Get last sync timestamp for incremental sync (unless ignored)
-        val lastSync = secureStorage.getLastGmailSyncTimestamp()
+        // Get last sync timestamp for THIS SPECIFIC account for incremental sync (unless ignored)
+        val accountEmail = account.email ?: "unknown"
+        val lastSync = secureStorage.getLastGmailSyncTimestamp(accountEmail)
         
         // Smart Lookback:
         // 1. If we have a lastSync > 0, use it (Incremental Sync).
@@ -116,10 +117,10 @@ class GmailRepositoryImpl @Inject constructor(
             }
         }
         
-        // Update last sync timestamp
+        // Update last sync timestamp for THIS SPECIFIC account
         if (messages.isNotEmpty()) {
-            android.util.Log.d("GmailRepo", "Updating last sync timestamp")
-            secureStorage.setLastGmailSyncTimestamp(System.currentTimeMillis() / 1000)
+            android.util.Log.d("GmailRepo", "Updating last sync timestamp for account: $accountEmail")
+            secureStorage.setLastGmailSyncTimestamp(accountEmail, System.currentTimeMillis() / 1000)
         }
         
         android.util.Log.d("GmailRepo", "Total files downloaded: ${files.size}")

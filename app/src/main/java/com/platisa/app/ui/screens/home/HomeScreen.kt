@@ -340,6 +340,7 @@ fun HomeScreen(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null
                             ) {
+                                viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
                                 android.util.Log.d("HomeScreen", "Avatar/Greeting clicked! Navigating to Profile...")
                                 navController.navigate(Screen.Profile.route)
                             },
@@ -436,7 +437,7 @@ fun HomeScreen(
 
                                 // Greeting text
                                 Text(
-                                    text = "Zdravo, $userName!",
+                                    text = "Zdravo, ${com.platisa.app.core.utils.SerbianGrammarUtils.toVocative(userName)}!",
                                     fontSize = 16.sp,
                                     color = MaterialTheme.colorScheme.onBackground,
                                     fontWeight = FontWeight.Bold
@@ -448,7 +449,10 @@ fun HomeScreen(
                     // Icons on the right
                     Row {
                             IconButton(
-                                onClick = { navController.navigate(Screen.Settings.createRoute("notifications")) }
+                                onClick = { 
+                                    viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
+                                    navController.navigate(Screen.Settings.createRoute("notifications")) 
+                                }
                             ) {
                                 val notifColor = if (isDarkTheme) com.platisa.app.ui.theme.IconBellDark else com.platisa.app.ui.theme.IconBellLight
                                 Box(
@@ -582,7 +586,10 @@ fun HomeScreen(
 
                             // Help Icon
                             IconButton(
-                                onClick = { com.platisa.app.ui.screens.help.TutorialState.show() }
+                                onClick = { 
+                                    viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
+                                    com.platisa.app.ui.screens.help.TutorialState.show() 
+                                }
                             ) {
                                 val helpColor = if (isDarkTheme) com.platisa.app.ui.theme.IconHelpDark else com.platisa.app.ui.theme.IconHelpLight
                                 Box(
@@ -643,7 +650,10 @@ fun HomeScreen(
                         totalUnpaid = totalUnpaid,
                         currency = currency,
                         celebrationImagePath = celebrationImagePath,
-                        onCameraClick = { navController.navigate(Screen.Camera.route) },
+                        onCameraClick = { 
+                            viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
+                            navController.navigate(Screen.Camera.route) 
+                        },
                         receipts = receipts // Still passing for other potential uses
                     )
                 }
@@ -698,6 +708,7 @@ fun HomeScreen(
                             receipt = receipt,
                             epsConsumption = epsDataMap[receipt.id]?.totalConsumption?.toInt(),
                             onNavigateToDetails = { 
+                                viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
                                 when (receipt.category) {
                                     com.platisa.app.core.domain.model.BillCategory.GROCERY,
                                     com.platisa.app.core.domain.model.BillCategory.PHARMACY,
@@ -710,6 +721,7 @@ fun HomeScreen(
                                 }
                             },
                             onConfirmPayment = { viewModel.markReceiptAsPaid(receipt.id) },
+                            currency = currency,
                             modifier = if (isFirstCard) {
                                 Modifier
                                     .tutorialTarget("bill_card")
@@ -787,11 +799,6 @@ fun DarkSummaryGrid(
                 spotColor = customColors.neonCyan.copy(alpha = 0.5f), 
                 ambientColor = customColors.neonCyan.copy(alpha = 0.3f)
             )
-            .border(
-                width = 1.dp, 
-                color = customColors.neonCyan.copy(alpha = 0.5f), 
-                shape = RoundedCornerShape(16.dp)
-            )
             .background(panelBackground),
         horizontalArrangement = Arrangement.Start
     ) {
@@ -852,8 +859,8 @@ fun DarkSummaryGrid(
             Image(
                 painter = rememberAsyncImagePainter(model = imageRequest),
                 contentDescription = "Slikaj QR",
-                contentScale = ContentScale.Fit,
-                modifier = Modifier.fillMaxSize()
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize().scale(1.05f)
             )
         }
     }
@@ -930,8 +937,8 @@ fun LightSummaryGrid(
             Image(
                 painter = rememberAsyncImagePainter(model = imageRequest),
                 contentDescription = "Slikaj QR Light",
-                contentScale = ContentScale.Fit,
-                modifier = Modifier.fillMaxSize()
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize().scale(1.05f)
             )
         }
     }
@@ -945,6 +952,8 @@ fun ModernBillCard(
     epsConsumption: Int?,
     onNavigateToDetails: () -> Unit,
     onConfirmPayment: () -> Unit,
+    currency: String = "RSD",
+    conversionRate: java.math.BigDecimal = java.math.BigDecimal("117.5"),
     modifier: Modifier = Modifier
 ) {
     val customColors = LocalPlatisaColors.current
@@ -1045,9 +1054,12 @@ fun ModernBillCard(
                 }
 
                 Column(horizontalAlignment = Alignment.End) {
-                    val formattedAmount = com.platisa.app.core.common.Formatters.formatCurrency(
-                        receipt.totalAmount ?: java.math.BigDecimal.ZERO
-                    ).substringBefore(",")
+                    val baseAmount = receipt.totalAmount ?: java.math.BigDecimal.ZERO
+                    val formattedAmount = if (currency == "EUR") {
+                        "€" + java.text.DecimalFormat("#,##0.00").format(baseAmount)
+                    } else {
+                        com.platisa.app.core.common.Formatters.formatCurrency(baseAmount).substringBefore(",")
+                    }
 
                     DynamicSizeText(
                         text = formattedAmount,

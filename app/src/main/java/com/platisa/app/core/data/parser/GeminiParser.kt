@@ -98,8 +98,10 @@ object GeminiParser {
             totalAmount = if (amount > 0) BigDecimal.valueOf(amount) else null,
             invoiceNumber = invoiceNumber,
             dueDate = dueDate,
-            recipientName = recipientName,
-            recipientAddress = recipientAddress
+            recipientName = merchantName, // Merchant is the recipient of payment
+            recipientAddress = null, // Merchant address (not always available)
+            payerName = recipientName, // "Recipient" on bill is the Payer (User)
+            payerAddress = recipientAddress // "Recipient Address" on bill is Payer Address
         )
     }
 }

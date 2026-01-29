@@ -10,7 +10,8 @@ data class IpsData(
     val referenceNumber: String?,
     val purposeCode: String?,
     val purposeDescription: String?,
-    val payerName: String? = null
+    val payerName: String? = null,
+    val payerAddress: String? = null
 )
 
 object IpsParser {
@@ -30,19 +31,33 @@ object IpsParser {
         }
 
         // Extract fields based on NBS IPS standard
-        // K: Key (PR)
-        // V: Version
-        // C: Character Set
-        // R: Recipient Account
-        // N: Recipient Name
-        // I: Amount (format: RSD1234,56)
-        // P: Payer Name
-        // SF: Purpose Code
-        // S: Purpose Description
-        // RO: Reference Number
+        // ... (standard fields K, V, C, R, N, I, SF, S, RO)
+        // P: Payer Data (Name, Address, City) - often comma separated
 
         val amountString = map["I"] // e.g., "RSD1234,56"
         val amount = parseAmount(amountString)
+
+        // Parse Payer Data (Tag P)
+        // Format varies but often: "Name Lastname, Street 123, City"
+        val rawPayerData = map["P"]
+        var payerName: String? = null
+        var payerAddress: String? = null
+
+        if (!rawPayerData.isNullOrBlank()) {
+            val payerParts = rawPayerData.split(",", limit = 2)
+            payerName = com.platisa.app.core.domain.parser.ReceiptParser.normalizeText(payerParts.getOrNull(0)?.trim())
+            
+            if (payerParts.size > 1) {
+                val candidateAddress = com.platisa.app.core.domain.parser.ReceiptParser.normalizeText(payerParts[1].trim())
+                // Validate address to avoid "189 RSD" issues from bad IPS data
+                if (candidateAddress != null && 
+                    !candidateAddress.uppercase().contains("RSD") && 
+                    !candidateAddress.uppercase().contains("DIN") &&
+                    !candidateAddress.matches(Regex("^[\\d.,\\s]+$"))) {
+                    payerAddress = candidateAddress
+                }
+            }
+        }
 
         return IpsData(
             recipientName = map["N"],
@@ -51,7 +66,8 @@ object IpsParser {
             referenceNumber = map["RO"],
             purposeCode = map["SF"],
             purposeDescription = map["S"],
-            payerName = com.platisa.app.core.domain.parser.ReceiptParser.normalizeText(map["P"])
+            payerName = payerName,
+            payerAddress = payerAddress
         )
     }
 

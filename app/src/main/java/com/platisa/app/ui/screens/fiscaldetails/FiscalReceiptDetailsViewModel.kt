@@ -14,8 +14,21 @@ import javax.inject.Inject
 
 @HiltViewModel
 class FiscalReceiptDetailsViewModel @Inject constructor(
-    private val receiptRepository: ReceiptRepository
+    private val receiptRepository: ReceiptRepository,
+    private val preferenceManager: com.platisa.app.core.data.preferences.PreferenceManager,
+    private val secureStorage: com.platisa.app.core.domain.SecureStorage,
+    private val vibrationHelper: com.platisa.app.core.common.VibrationHelper
 ) : ViewModel() {
+
+    fun vibrate(type: com.platisa.app.core.common.VibrationHelper.HapticType) {
+        vibrationHelper.vibrate(type)
+    }
+
+    private val _currency = MutableStateFlow(secureStorage.getCurrency())
+    val currency: StateFlow<String> = _currency.asStateFlow()
+
+    private val _conversionRate = MutableStateFlow(java.math.BigDecimal(preferenceManager.lastKnownEuroRate.toDouble()))
+    val conversionRate: StateFlow<java.math.BigDecimal> = _conversionRate.asStateFlow()
 
     private val _state = MutableStateFlow<FiscalReceiptState>(FiscalReceiptState.Loading)
     val state: StateFlow<FiscalReceiptState> = _state.asStateFlow()

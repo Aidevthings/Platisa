@@ -28,13 +28,17 @@ fun ReceiptEntity.toDomain(): Receipt {
         syncStatus = SyncStatus.valueOf(syncStatus.name),
         paymentStatus = com.platisa.app.core.domain.model.PaymentStatus.valueOf(paymentStatus.name),
         paymentDate = updatedAt,
-        originalSource = sourceType.name,
+        originalSource = sourceEmail ?: sourceType.name,  // Prefer email for cloud sync, fallback to enum
         externalId = externalId,
         createdAt = createdAt,
         updatedAt = updatedAt,
         savedQrUri = savedQrUri,
         recipientName = recipientName,
-        recipientAddress = recipientAddress
+        recipientAddress = recipientAddress,
+        currentMonthAmount = currentMonthAmount,
+        previousDebtAmount = previousDebtAmount,
+        payerName = payerName,
+        payerAddress = payerAddress
     )
 }
 
@@ -47,6 +51,8 @@ fun Receipt.toEntity(): ReceiptEntity {
         totalAmount = totalAmount,
         currency = currency,
         imagePath = imagePath,
+        currentMonthAmount = currentMonthAmount,
+        previousDebtAmount = previousDebtAmount,
         qrCodeData = qrCodeData,
         invoiceNumber = invoiceNumber,
         naplatniNumber = naplatniNumber,
@@ -57,22 +63,33 @@ fun Receipt.toEntity(): ReceiptEntity {
         metadata = metadata,
         syncStatus = com.platisa.app.core.data.database.entity.SyncStatus.valueOf(syncStatus.name),
         paymentStatus = com.platisa.app.core.data.database.entity.PaymentStatus.valueOf(paymentStatus.name),
-        sourceType = try {
-            val sanitizedSource = if (originalSource.contains("(")) {
-                originalSource.substringBefore("(").trim()
+        // Separate email from sourceType: If originalSource contains @, it's an email
+        sourceType = run {
+            val isEmail = originalSource.contains("@")
+            if (isEmail) {
+                com.platisa.app.core.data.database.entity.SourceType.GMAIL  // Gmail source
             } else {
-                originalSource
+                val sanitizedSource = if (originalSource.contains("(")) {
+                    originalSource.substringBefore("(").trim()
+                } else {
+                    originalSource.uppercase()
+                }
+                try {
+                    com.platisa.app.core.data.database.entity.SourceType.valueOf(sanitizedSource)
+                } catch (e: Exception) {
+                    com.platisa.app.core.data.database.entity.SourceType.CAMERA
+                }
             }
-            com.platisa.app.core.data.database.entity.SourceType.valueOf(sanitizedSource)
-        } catch (e: Exception) {
-            com.platisa.app.core.data.database.entity.SourceType.MANUAL
         },
+        sourceEmail = if (originalSource.contains("@")) originalSource else null,  // Preserve email separately
         externalId = externalId,
         createdAt = createdAt,
         updatedAt = updatedAt,
         savedQrUri = savedQrUri,
         recipientName = recipientName,
-        recipientAddress = recipientAddress
+        recipientAddress = recipientAddress,
+        payerName = payerName,
+        payerAddress = payerAddress
     )
 }
 

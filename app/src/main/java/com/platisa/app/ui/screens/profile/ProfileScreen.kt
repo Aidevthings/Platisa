@@ -36,6 +36,11 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import coil.compose.rememberAsyncImagePainter
 import com.platisa.app.core.common.BaseScreen
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import java.io.File
 
 import com.platisa.app.ui.theme.LocalPlatisaColors
@@ -57,7 +62,20 @@ fun ProfileScreen(
     val context = LocalContext.current
     
     var showNameDialog by remember { mutableStateOf(false) }
-    var tempName by remember { mutableStateOf(userName) }
+    var tempName by remember { mutableStateOf(TextFieldValue(userName)) }
+    val nameFocusRequester = remember { FocusRequester() }
+    var hasSelectedOnFocus by remember { mutableStateOf(false) }
+    
+    // Reset state when dialog opens
+    LaunchedEffect(showNameDialog) {
+        if (showNameDialog) {
+            tempName = TextFieldValue(text = userName)
+            hasSelectedOnFocus = false
+        }
+    }
+    
+    // Photo URI for camera capture
+    var photoUri by remember { mutableStateOf<Uri?>(null) }
     
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -65,14 +83,61 @@ fun ProfileScreen(
         uri?.let { viewModel.setAvatarFromUri(it) }
     }
     
+    // Create temp file for camera photo
+    fun createImageFile(): java.io.File {
+        val avatarsDir = java.io.File(context.filesDir, "avatars")
+        if (!avatarsDir.exists()) avatarsDir.mkdirs()
+        return java.io.File(avatarsDir, "avatar_camera_${System.currentTimeMillis()}.jpg")
+    }
+    
     val cameraLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.TakePicturePreview()
-    ) { bitmap ->
-        bitmap?.let {
-            // Save bitmap and set as avatar
-            // Implementation needed for saving bitmap to file
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            // Check if we have a bitmap in the result data (some cameras return thumbnail)
+            val bitmap = result.data?.extras?.get("data") as? android.graphics.Bitmap
+            if (bitmap != null) {
+                try {
+                    val avatarsDir = java.io.File(context.filesDir, "avatars")
+                    if (!avatarsDir.exists()) avatarsDir.mkdirs()
+                    val fileName = "avatar_camera_${System.currentTimeMillis()}.jpg"
+                    val destFile = java.io.File(avatarsDir, fileName)
+                    java.io.FileOutputStream(destFile).use { out ->
+                        bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, out)
+                    }
+                    viewModel.setAvatarFromUri(Uri.fromFile(destFile))
+                } catch (e: Exception) {
+                    android.widget.Toast.makeText(context, "Greška pri čuvanju slike", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            } else if (photoUri != null) {
+                // Use the saved file URI
+                viewModel.setAvatarFromUri(photoUri!!)
+            }
         }
     }
+    
+    // Camera permission launcher - opens front camera
+    // Camera permission launcher - opens front camera
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            val intent = android.content.Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE)
+            // Standard Android extras for front camera
+            intent.putExtra("android.intent.extras.CAMERA_FACING", 1) // 1 = front
+            intent.putExtra("android.intent.extras.LENS_FACING_FRONT", 1)
+            intent.putExtra("android.intent.extra.USE_FRONT_CAMERA", true)
+            // Samsung-specific extras
+            intent.putExtra("camerafacing", "front")
+            intent.putExtra("previous_mode", "Selfie")
+            // Google Camera specific
+            intent.putExtra("com.google.assistant.extra.USE_FRONT_CAMERA", true)
+            cameraLauncher.launch(intent)
+        } else {
+            android.widget.Toast.makeText(context, "Potrebna je dozvola za kameru", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
 
     BaseScreen(viewModel = viewModel) {
         Box(
@@ -87,7 +152,10 @@ fun ProfileScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { navController.popBackStack() }
+                        .clickable { 
+                            viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
+                            navController.popBackStack() 
+                        }
                         .padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -133,7 +201,10 @@ fun ProfileScreen(
                             .padding(3.dp)
                             .clip(CircleShape)
                             .background(MaterialTheme.colorScheme.surface)
-                            .clickable { showNameDialog = true },
+                            .clickable { 
+                                viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
+                                showNameDialog = true 
+                            },
                         contentAlignment = Alignment.Center
                     ) {
                         if (avatarPath != null) {
@@ -172,14 +243,25 @@ fun ProfileScreen(
                         color = MaterialTheme.colorScheme.onBackground
                     )
                     
-                    TextButton(onClick = { showNameDialog = true }) {
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    OutlinedButton(
+                        onClick = { 
+                            viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
+                            showNameDialog = true 
+                        },
+                        border = androidx.compose.foundation.BorderStroke(1.dp, customColors.neonCyan),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = customColors.neonCyan
+                        )
+                    ) {
                         Text(
                             text = "Promeni ime",
-                            color = customColors.neonCyan,
-                            fontSize = 18.sp,
+                            fontSize = 16.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
+
                 }
 
                 // Avatar Upload Buttons
@@ -190,7 +272,10 @@ fun ProfileScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     OutlinedButton(
-                        onClick = { imagePickerLauncher.launch("image/*") },
+                        onClick = { 
+                            viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
+                            imagePickerLauncher.launch("image/*") 
+                        },
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.outlinedButtonColors(
                             contentColor = customColors.neonCyan
@@ -203,7 +288,10 @@ fun ProfileScreen(
                     }
                     
                     OutlinedButton(
-                        onClick = { cameraLauncher.launch(null) },
+                        onClick = { 
+                            viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
+                            cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA) 
+                        },
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.outlinedButtonColors(
                             contentColor = customColors.neonCyan
@@ -332,6 +420,19 @@ fun ProfileScreen(
 
     // Name Edit Dialog
     if (showNameDialog) {
+        // Delayed selection effect
+        // Delayed selection effect
+        LaunchedEffect(hasSelectedOnFocus) {
+            if (hasSelectedOnFocus) {
+                // Wait for keyboard to likely be up (user requested "second step")
+                // This delay ensures the keyboard animation doesn't interfere with selection
+                kotlinx.coroutines.delay(500) 
+                tempName = tempName.copy(
+                    selection = TextRange(0, tempName.text.length)
+                )
+            }
+        }
+        
         AlertDialog(
             onDismissRequest = { showNameDialog = false },
             title = { Text("Promeni Ime", color = customColors.neonCyan) },
@@ -341,6 +442,14 @@ fun ProfileScreen(
                     onValueChange = { tempName = it },
                     label = { Text("Tvoje ime") },
                     singleLine = true,
+                    modifier = Modifier
+                        .focusRequester(nameFocusRequester)
+                        .focusRequester(nameFocusRequester)
+                        .onFocusChanged { focusState ->
+                            if (focusState.isFocused && !hasSelectedOnFocus) {
+                                hasSelectedOnFocus = true
+                            }
+                        },
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = customColors.neonCyan,
                         focusedLabelColor = customColors.neonCyan,
@@ -353,7 +462,7 @@ fun ProfileScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        viewModel.setUserName(tempName)
+                        viewModel.setUserName(tempName.text)
                         showNameDialog = false
                     },
                     colors = ButtonDefaults.buttonColors(
@@ -365,7 +474,7 @@ fun ProfileScreen(
             },
             dismissButton = {
                 TextButton(onClick = { 
-                    tempName = userName
+                    // No need to reset, next open will re-init
                     showNameDialog = false 
                 }) {
                     Text("Otkaži", color = MaterialTheme.colorScheme.onSurfaceVariant)

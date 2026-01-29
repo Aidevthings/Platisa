@@ -86,7 +86,10 @@ fun SearchScreen(
                         label = "Pretraži prodavca...",
                         modifier = Modifier.weight(1f)
                     )
-                    IconButton(onClick = { showFilters = !showFilters }) {
+                    IconButton(onClick = { 
+                        viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
+                        showFilters = !showFilters 
+                    }) {
                         Icon(Icons.Default.FilterList, contentDescription = "Filteri", tint = NeonCyan)
                     }
                 }
@@ -105,7 +108,12 @@ fun SearchScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(top = 8.dp)
-                                    .clickable { showDatePicker = true },
+                                    .fillMaxWidth()
+                                    .padding(top = 8.dp)
+                                    .clickable { 
+                                        viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
+                                        showDatePicker = true 
+                                    },
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Icon(Icons.Default.DateRange, contentDescription = null, tint = White)
@@ -143,6 +151,7 @@ fun SearchScreen(
                             is SearchUiItem.ReceiptItem -> {
                                 val receipt = item.receipt
                                 PlatisaCard(onClick = {
+                                    viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
                                     when (receipt.category) {
                                         com.platisa.app.core.domain.model.BillCategory.GROCERY,
                                         com.platisa.app.core.domain.model.BillCategory.PHARMACY,
@@ -179,6 +188,7 @@ fun SearchScreen(
                             is SearchUiItem.ProductItem -> {
                                 val product = item.product
                                 PlatisaCard(onClick = {
+                                    viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
                                     // Navigate to the parent receipt
                                     navController.navigate(com.platisa.app.ui.navigation.Screen.FiscalReceiptDetails.createRoute(product.id))
                                 }) {

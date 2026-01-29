@@ -111,5 +111,15 @@ interface ReceiptDao {
     
     @Query("DELETE FROM receipt_items")
     suspend fun deleteAllReceiptItems()
+
+    @Query("DELETE FROM receipts WHERE sourceType = :sourceType")
+    suspend fun deleteReceiptsBySource(sourceType: com.platisa.app.core.data.database.entity.SourceType)
+
+    // Cascade Payment Support - Robust text matching
+    @Query("SELECT * FROM receipts WHERE TRIM(merchantName) = TRIM(:merchantName) COLLATE NOCASE AND paymentStatus = :status AND id != :excludeId")
+    suspend fun getUnpaidReceiptsForMerchant(merchantName: String, status: com.platisa.app.core.data.database.entity.PaymentStatus, excludeId: Long): List<ReceiptEntity>
+
+    @Query("SELECT MAX(date) FROM receipts WHERE TRIM(merchantName) = TRIM(:merchantName) COLLATE NOCASE")
+    suspend fun getLatestReceiptDateForMerchant(merchantName: String): Long?
 }
 

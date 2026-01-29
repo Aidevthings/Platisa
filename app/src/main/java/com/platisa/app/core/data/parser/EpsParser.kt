@@ -23,6 +23,14 @@ object EpsParser {
         } else {
             extractTotalConsumption(normalizedText)
         }
+
+        // Smart Parsing: Extract monetary values
+        val currentAmount = extractCurrentMonthAmount(normalizedText)
+        val previousDebt = extractPreviousDebt(normalizedText)
+        
+        android.util.Log.d("EpsParser", "=== SMART PARSING RESULT ===")
+        android.util.Log.d("EpsParser", "Current Month Amount: $currentAmount")
+        android.util.Log.d("EpsParser", "Previous Debt: $previousDebt")
         
         // Extract payment ID fields
         val naplatniBroj = extractNaplatniBroj(normalizedText)
@@ -86,8 +94,69 @@ object EpsParser {
             dueDate = dueDate,
             paymentId = paymentId,
             recipientName = recipientName,
-            recipientAddress = recipientAddress
+
+            recipientAddress = recipientAddress,
+            currentMonthAmount = currentAmount,
+            previousDebtAmount = previousDebt
         )
+    }
+
+    /**
+     * Extracts "Zaduženje za obračunski period" (Charge for billing period).
+     * This represents the TRUE monthly cost without previous debts.
+     */
+    private fun extractCurrentMonthAmount(text: String): BigDecimal? {
+        val patterns = listOf(
+            // Cyrillic
+            Regex("""Задужење\s+за\s+обрачунски\s+период[:\s]+([\d.,]+)""", RegexOption.IGNORE_CASE),
+            Regex("""Zaduzenje\s+za\s+obracunski\s+period[:\s]+([\d.,]+)""", RegexOption.IGNORE_CASE),
+            // Fallback: Look for "Zaduženje" near "obračunski period" on lines
+            Regex("""(?:Задужење|Zaduzenje).{0,50}?([\d.,]+)""", RegexOption.IGNORE_CASE)
+        )
+
+        for (regex in patterns) {
+            val match = regex.find(text)
+            if (match != null) {
+                val amount = parseAmount(match.groupValues[1])
+                if (amount != null && amount > BigDecimal("100")) return amount
+            }
+        }
+        return null
+    }
+
+    /**
+     * Extracts "Dug iz prethodnog perioda" (Debt from previous period).
+     */
+    private fun extractPreviousDebt(text: String): BigDecimal? {
+        val patterns = listOf(
+            // --- ROBUST FLEXIBLE PATTERNS ---
+            // 1. "Dug" ... "prethod" ... [amount]
+            // Matches: "Dug iz prethodnog perioda" (Latin/Cyrillic mixed supported)
+            Regex("""(Дуг|Dug).*?(prethod|претход).*?[:\s]+([\d.,]+)""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)),
+            
+            // 2. "Prethodni" ... "dug" ... [amount]
+            Regex("""(Претходни|Prethodni).*?(дуг|dug)[:\s]+([\d.,]+)""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)),
+
+            // 3. "Dug" ... "zakljucno" ... [amount]
+            Regex("""(Дуг|Dug).*?(zaklju[cč]no|закључно).*?[:\s]+([\d.,]+)""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)),
+
+            // 4. "Ukupan" ... "dug" ... [amount]
+            Regex("""(Укупан|Ukupan).*?(дуг|dug)[:\s]+([\d.,]+)""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)),
+
+            // 5. Fallback: Isolated "Dug"
+            Regex("""\b(Дуг|Dug)\b[^:\n]{0,15}[:\s]\s*([\d.,]+)""", RegexOption.IGNORE_CASE)
+        )
+
+        for (regex in patterns) {
+            val match = regex.find(text)
+            if (match != null) {
+                // Use last() because regexes have variable number of capturing groups, 
+                // but the amount is always the last specific group.
+                val amount = parseAmount(match.groupValues.last())
+                if (amount != null) return amount
+            }
+        }
+        return null
     }
 
     /**
@@ -158,88 +227,160 @@ object EpsParser {
     private fun extractRecipientInfo(text: String): Pair<String?, String?> {
         val lines = text.lines().map { it.trim() }.filter { it.isNotEmpty() }
         
-        val anchors = listOf("KUPAC:", "КОРИСНИК:", "Korisnik:", "PRIMALAC:", "ПОТРОШАЧ:", "Potrošač:", "PLATILAC:", "ПЛАТИЛАЦ:",
-            "KYPAC:", "KORISNIK:", "PRIMILAC:", "PO PRIMALAC:", "KORlSNIK:", "KORISNlK:", "PLATILAC")
+        var name: String? = null
+        var address: String? = null
+
+        // 1. SPECIFIC KEYWORDS (Priority)
+        // User requested: "Adresa korisnika", "Adresa mernog mesta", "Opstina"
+        val addressKeywords = listOf(
+            "Adresa mernog mesta", "Адреса мерног места",
+            "Adresa korisnika", "Адреса корисника",
+            "Adresa objekta", "Адреса објекта"
+        )
+        
         for (i in lines.indices) {
             val line = lines[i]
-            for (anchor in anchors) {
-                if (line.contains(anchor, ignoreCase = true)) {
-                    val name = line.substringAfter(anchor).trim()
-                    
-                    if (name.length < 3 && i < lines.size - 1) {
-                         val nextLine = lines[i+1]
-                         if (nextLine.length > 5) {
-                             val address = if (i < lines.size - 2) lines[i + 2] else null
-                             return com.platisa.app.core.domain.parser.ReceiptParser.normalizeText(nextLine) to 
-                                    com.platisa.app.core.domain.parser.ReceiptParser.normalizeText(address)
-                         }
+            val keywordMatch = addressKeywords.find { line.contains(it, ignoreCase = true) }
+            if (keywordMatch != null) {
+                // Address is usually after the keyword or on the next line
+                val candidate = line.substringAfter(keywordMatch).trim().removePrefix(":").trim()
+                if (isValidAddress(candidate)) {
+                    address = cleanAddress(candidate)
+                    // MULTI-LINE SUPPORT: Check if next line is also part of the address
+                    if (i < lines.size - 1 && isValidSubsequentAddressLine(lines[i+1])) {
+                        address = (address ?: "") + ", ${lines[i+1]}"
                     }
-                    
-                    val address = if (i < lines.size - 1) lines[i + 1] else null
-                    if (name.isNotEmpty()) {
-                        return com.platisa.app.core.domain.parser.ReceiptParser.normalizeText(name) to 
-                               com.platisa.app.core.domain.parser.ReceiptParser.normalizeText(address)
+                    if (name == null && i > 0) name = findNameAbove(lines, i)
+                    break
+                } else if (i < lines.size - 1) {
+                    val nextLine = lines[i+1]
+                    if (isValidAddress(nextLine)) {
+                        address = cleanAddress(nextLine)
+                        // MULTI-LINE SUPPORT: Check if row after that is also part of the address
+                        if (i < lines.size - 2 && isValidSubsequentAddressLine(lines[i+2])) {
+                            address = (address ?: "") + ", ${lines[i+2]}"
+                        }
+                        if (name == null && i > 0) name = findNameAbove(lines, i)
+                        break
                     }
                 }
             }
         }
-        
-        val forbiddenNamePhrases = listOf(
-            "prigovore", "možete", "podneti", "reklamacije", "račun", "rok", "dana", "iznos", "obračun", "e-mail", "www", "http",
-            "приговоре", "можете", "поднети", "рекламације", "рачун", "рок", "дана", "износ", "обрачун",
-            "npurobope", "mokete", "noghetm",
-            "broj", "bpoj", "brojila", "naplatni", "ed broj", "бpoj", "број", "5poj"
-        )
-        
-        val searchLimit = (lines.size * 0.6).toInt().coerceAtLeast(10)
-        val zipCityRegex = Regex(""".*?(\d{5})\s+([A-Za-zČĆŽŠĐčćžšđА-Яа-я]+(\s+[A-Za-zČĆŽŠĐčćžšđА-Яа-я]+){0,2}).*""")
 
-        for (i in 0 until searchLimit.coerceAtMost(lines.size)) {
-            val line = lines[i]
-            
-            val match = zipCityRegex.find(line)
-            if (match != null) {
-                if (i >= 2) {
-                    val lineMinus1 = lines[i - 1]
-                    val lineMinus2 = lines[i - 2]
-                    
-                    fun isValidName(text: String): Boolean {
-                        if (text.length < 3) return false
-                        val lower = text.lowercase()
-                        if (forbiddenNamePhrases.any { lower.contains(it) }) return false
-                        if (Regex("^[\\d./-]+$").matches(text)) return false
-                        return true
+        // 2. Opstina/Opština Keyword
+        if (address == null) {
+            val opstinaKeywords = listOf("Opstina", "Opština", "Општина")
+            for (i in lines.indices) {
+                val line = lines[i]
+                if (opstinaKeywords.any { line.contains(it, ignoreCase = true) }) {
+                    // Check line ABOVE opstina for street
+                    if (i > 0 && isValidAddress(lines[i-1])) {
+                        address = "${lines[i-1]}, $line"
+                        if (name == null && i > 1) name = findNameAbove(lines, i - 1)
+                        break
                     }
-                    
-                    var recipientName: String? = null
-                    var recipientAddress: String? = null
-                    
-                    if (i >= 3) {
-                        val lineMinus3 = lines[i - 3]
-                        if (isValidName(lineMinus3)) {
-                            if (!forbiddenNamePhrases.any { lineMinus2.lowercase().contains(it) }) {
-                                recipientName = lineMinus3
-                                recipientAddress = "$lineMinus2, $lineMinus1, $line"
+                }
+            }
+        }
+
+        // 3. Fallback: Standard Anchors (Korisnik, Kupac)
+        if (name == null || address == null) {
+            val anchors = listOf("KUPAC:", "КОРИСНИК:", "Korisnik:", "PRIMALAC:", "ПОТРОШАЧ:", "Potrošač:", "PLATILAC:", "ПЛАТИЛАЦ:")
+            for (i in lines.indices) {
+                val line = lines[i]
+                for (anchor in anchors) {
+                    if (line.contains(anchor, ignoreCase = true)) {
+                        val candidateName = line.substringAfter(anchor).trim()
+                        if (isValidName(candidateName)) name = candidateName
+                        
+                        // Look for address below
+                        if (address == null && i < lines.size - 1) {
+                            val candidateAddr = lines[i+1]
+                            if (isValidAddress(candidateAddr)) {
+                                address = cleanAddress(candidateAddr)
+                                // Check for second row of address
+                                if (i < lines.size - 2 && isValidSubsequentAddressLine(lines[i+2])) {
+                                    address = (address ?: "") + ", ${lines[i+2]}"
+                                }
+                                break
                             }
                         }
                     }
-                    
-                    if (recipientName == null) {
-                         if (isValidName(lineMinus2)) {
-                             recipientName = lineMinus2
-                             recipientAddress = "$lineMinus1, $line"
-                         }
-                    }
-
-                    if (recipientName != null) {
-                         return com.platisa.app.core.domain.parser.ReceiptParser.normalizeText(recipientName) to 
-                                com.platisa.app.core.domain.parser.ReceiptParser.normalizeText(recipientAddress)
-                    }
                 }
             }
         }
+
+        return com.platisa.app.core.domain.parser.ReceiptParser.normalizeText(name?.takeIf { it.isNotBlank() }) to 
+               com.platisa.app.core.domain.parser.ReceiptParser.normalizeText(address?.takeIf { it.isNotBlank() })
+    }
+
+    private fun findNameAbove(lines: List<String>, addressIndex: Int): String? {
+        // Search up to 3 lines above for a valid name
+        for (j in (addressIndex - 1) downTo (addressIndex - 3).coerceAtLeast(0)) {
+            val candidate = lines[j]
+            if (isValidName(candidate)) return candidate
+        }
+        return null
+    }
+
+    private fun isValidAddress(text: String): Boolean {
+        if (text.length < 5) return false
+        val upper = text.uppercase()
+        // Reject money lines
+        if (upper.contains("RSD") || upper.contains("DIN") || upper.contains("РСД") || upper.contains("ДИН") || upper.contains("EUR") || upper.contains("€")) return false
+        if (text.contains(Regex("\\d+,\\d{2}"))) return false // No decimals like ,00
+        // Reject purely numeric
+        if (text.matches(Regex("^[\\d.,\\s-]+$"))) return false
         
-        return null to null
+        // Don't reject for metadata anymore, we just clean it up
+        return true
+    }
+
+    /**
+     * Strips technical metadata and noisy prefixes from addresses.
+     */
+    private fun cleanAddress(text: String?): String? {
+        val input = text ?: return null
+        var cleaned: String = input
+        val metadataKeywords = listOf(
+            "VRSTA PROSTORA", "ŠIFRA PROSTORA", "SIFRA PROSTORA",
+            "ВРСТА ПРОСТОРА", "ШИФРА ПРОСТОРА", "KATEGORIJA", "POVRŠINA",
+            "VRSTA", "SIFRA", "ŠIFRA"
+        )
+        
+        for (keyword in metadataKeywords) {
+            val regex = Regex("(?i)$keyword[:\\s]+[^,]*", RegexOption.IGNORE_CASE)
+            cleaned = cleaned.replace(regex, "").trim()
+        }
+        
+        return cleaned.removePrefix(":").removePrefix(",").trim().removeSuffix(",").trim().takeIf { it.isNotBlank() }
+    }
+
+    /**
+     * Checks if a line following a street address is likely a secondary address line (Opština, City, Postal Code).
+     */
+    private fun isValidSubsequentAddressLine(text: String): Boolean {
+        if (text.length < 3) return false
+        val upper = text.uppercase()
+        
+        // If it contains "Opština", "Grad", or a 5-digit postal code, it's likely a second row
+        if (upper.contains("OPŠTINA") || upper.contains("OPSTINA") || upper.contains("ОПШТИНА")) return true
+        if (upper.contains("GRAD") || upper.contains("ГРАД")) return true
+        if (text.contains(Regex("\\b\\d{5}\\b"))) return true
+        
+        // If it looks like money, definitely not an address
+        if (upper.contains("RSD") || upper.contains("DIN") || upper.contains("РСД") || upper.contains("ДИН")) return false
+        
+        return false
+    }
+
+    private fun isValidName(text: String): Boolean {
+        if (text.length < 3) return false
+        val upper = text.uppercase()
+        val forbidden = listOf("RSD", "DIN", "РСД", "ДИН", "ADRESA", "ULICA", "OBRAČUN", "RAČUN")
+        if (forbidden.any { upper.contains(it) }) return false
+        if (text.matches(Regex(".*\\d{3,}.*"))) return false // Names don't usually have long numbers
+        return true
     }
 
     /**
@@ -304,8 +445,14 @@ object EpsParser {
             val match = regex.find(text)
             if (match != null) {
                 val result = match.groupValues.getOrNull(1)
-                android.util.Log.d("EpsParser", "Pronađen broj računa: $result")
-                return result
+                // IGNORE current year as invoice number (Infostan/EPS false positive)
+                val numInt = result?.toIntOrNull()
+                if (numInt != 2025 && numInt != 2026) {
+                    android.util.Log.d("EpsParser", "Pronađen broj računa: $result")
+                    return result
+                } else {
+                    android.util.Log.d("EpsParser", "⚠️ Ignorisan broj računa koji liči na godinu: $result")
+                }
             }
         }
         android.util.Log.d("EpsParser", "Broj računa nije pronađen")

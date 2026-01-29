@@ -14,8 +14,13 @@ import javax.inject.Inject
 
 @HiltViewModel
 class CameraViewModel @Inject constructor(
-    private val repository: ReceiptRepository
+    private val repository: ReceiptRepository,
+    private val vibrationHelper: com.platisa.app.core.common.VibrationHelper
 ) : ViewModel() {
+
+    fun vibrate(type: com.platisa.app.core.common.VibrationHelper.HapticType) {
+        vibrationHelper.vibrate(type)
+    }
 
     /**
      * Save an IPS payment bill directly to database.
@@ -72,7 +77,9 @@ class CameraViewModel @Inject constructor(
             qrCodeData = buildIpsQrString(ipsData),
             paymentStatus = PaymentStatus.UNPAID,
             originalSource = "CAMERA_IPS",
-            invoiceNumber = ipsData.referenceNumber
+            invoiceNumber = ipsData.referenceNumber,
+            payerName = ipsData.payerName,
+            payerAddress = ipsData.payerAddress
         )
         
         val receiptId = repository.insertReceipt(receipt)
@@ -131,7 +138,9 @@ class CameraViewModel @Inject constructor(
                         qrCodeData = fiscalUrl,
                         paymentStatus = PaymentStatus.PAID,  // Fiscal receipts are always paid
                         originalSource = "CAMERA_FISCAL",
-                        invoiceNumber = parsed.invoiceNumber
+                        invoiceNumber = parsed.invoiceNumber,
+                        payerName = parsed.payerName,
+                        payerAddress = parsed.payerAddress
                     )
                     
                     val receiptId = repository.insertReceipt(receipt)

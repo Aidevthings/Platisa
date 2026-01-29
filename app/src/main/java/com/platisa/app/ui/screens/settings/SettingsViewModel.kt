@@ -6,6 +6,9 @@ import com.platisa.app.core.common.BaseViewModel
 import com.platisa.app.core.common.SnackbarManager
 import com.platisa.app.core.domain.manager.ExportManager
 import com.platisa.app.core.domain.repository.ReceiptRepository
+import com.platisa.app.core.data.repository.FirestoreRepository
+import com.platisa.app.core.data.network.FeedbackApi
+import com.platisa.app.core.data.network.FeedbackRequest
 import com.platisa.app.core.domain.SecureStorage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,14 +26,24 @@ class SettingsViewModel @Inject constructor(
     private val secureStorage: SecureStorage,
     private val workManager: androidx.work.WorkManager,
     private val preferenceManager: com.platisa.app.core.data.preferences.PreferenceManager,
-    private val notificationScheduler: com.platisa.app.core.notification.NotificationScheduler
+    private val notificationScheduler: com.platisa.app.core.notification.NotificationScheduler,
+    private val firestoreRepository: FirestoreRepository,
+    private val feedbackApi: FeedbackApi,
+    private val vibrationHelper: com.platisa.app.core.common.VibrationHelper
 ) : BaseViewModel() {
-
-    private val _biometricEnabled = MutableStateFlow(secureStorage.isBiometricEnabled())
-    val biometricEnabled = _biometricEnabled.asStateFlow()
 
     private val _currency = MutableStateFlow(secureStorage.getCurrency())
     val currency = _currency.asStateFlow()
+
+    fun vibrate(type: com.platisa.app.core.common.VibrationHelper.HapticType) {
+        vibrationHelper.vibrate(type)
+    }
+
+    private val _isDarkTheme = MutableStateFlow(preferenceManager.isDarkTheme)
+    val isDarkTheme = _isDarkTheme.asStateFlow()
+
+    private val _hapticEnabled = MutableStateFlow(preferenceManager.hapticEnabled)
+    val hapticEnabled = _hapticEnabled.asStateFlow()
 
     private val _connectedEmail = MutableStateFlow<String?>(null)
     val connectedEmail = _connectedEmail.asStateFlow()
@@ -41,8 +54,7 @@ class SettingsViewModel @Inject constructor(
     private val _syncStatus = MutableStateFlow<String?>(null)
     val syncStatus = _syncStatus.asStateFlow()
 
-    private val _isIgnoringBatteryOptimizations = MutableStateFlow(true)
-    val isIgnoringBatteryOptimizations = _isIgnoringBatteryOptimizations.asStateFlow()
+
 
     // Notification preferences
     private val _notifyDue3Days = MutableStateFlow(preferenceManager.notifyDue3Days)
@@ -60,6 +72,9 @@ class SettingsViewModel @Inject constructor(
     private val _notificationTimeHour = MutableStateFlow(preferenceManager.notificationTimeHour)
     val notificationTimeHour = _notificationTimeHour.asStateFlow()
 
+    private val _notificationTimeMinute = MutableStateFlow(preferenceManager.notificationTimeMinute)
+    val notificationTimeMinute = _notificationTimeMinute.asStateFlow()
+
     private val _subscriptionStatus = MutableStateFlow(preferenceManager.subscriptionStatus)
     val subscriptionStatus = _subscriptionStatus.asStateFlow()
 
@@ -67,14 +82,11 @@ class SettingsViewModel @Inject constructor(
         checkConnectedAccount()
         loadConnectedAccounts()
         observeSyncWork()
-        checkBatteryOptimization()
+
         notificationScheduler.scheduleNotificationChecks() // Schedule notifications on app start
     }
 
-    fun checkBatteryOptimization() {
-        val powerManager = context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
-        _isIgnoringBatteryOptimizations.value = powerManager.isIgnoringBatteryOptimizations(context.packageName)
-    }
+
 
     private fun observeSyncWork() {
         val workInfoFlow = workManager.getWorkInfosForUniqueWorkFlow("GmailSyncOneTime")
@@ -114,6 +126,7 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun syncNow() {
+        vibrationHelper.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
         launchCatching(showLoading = false) {
             val syncRequest = androidx.work.OneTimeWorkRequestBuilder<com.platisa.app.core.worker.GmailSyncWorker>()
                 .setInputData(androidx.work.workDataOf(
@@ -157,20 +170,29 @@ class SettingsViewModel @Inject constructor(
         }
     }
     
-    fun toggleBiometric(enabled: Boolean) {
-        secureStorage.setBiometricEnabled(enabled)
-        _biometricEnabled.value = enabled
-    }
-    
     fun setCurrency(newCurrency: String) {
         secureStorage.setCurrency(newCurrency)
         _currency.value = newCurrency
+        vibrationHelper.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
+    }
+
+    fun toggleHaptic(enabled: Boolean) {
+        preferenceManager.hapticEnabled = enabled
+        _hapticEnabled.value = enabled
+        if (enabled) vibrationHelper.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.SUCCESS)
+    }
+
+    fun toggleTheme(isDark: Boolean) {
+        preferenceManager.isDarkTheme = isDark
+        _isDarkTheme.value = isDark
+        vibrationHelper.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
     }
     
     private val _forceLogoutEvent = kotlinx.coroutines.flow.MutableSharedFlow<Boolean>()
     val forceLogoutEvent = _forceLogoutEvent.asSharedFlow()
 
     fun removeAccount(email: String) {
+        vibrationHelper.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
         secureStorage.removeConnectedAccount(email)
         
         // Multi-Account Logic: We don't sign out the global session just because one account is removed.
@@ -299,10 +321,9 @@ class SettingsViewModel @Inject constructor(
             workManager.cancelUniqueWork("GmailSync")
             workManager.cancelUniqueWork("GmailSyncOneTime")
 
-            // 1. Clear database tables
-            repository.deleteAllReceiptItems()
-            repository.deleteAllEpsData()
-            repository.deleteAllReceipts()
+            // 1. Clear ONLY Gmail receipts (preserves manual/camera scans)
+            // Note: EpsData and ReceiptItems are automatically deleted via CASCADE
+            repository.deleteGmailReceipts()
             
             // 2. Clear ONLY cache files (Gmail PDFs)
             val cacheDir = context.cacheDir
@@ -315,14 +336,89 @@ class SettingsViewModel @Inject constructor(
             // 3. Reset Timestamp to 0 to trigger fresh sync
             secureStorage.setLastGmailSyncTimestamp(0)
             
-            android.util.Log.d("SettingsViewModel", "✅ Data cleared. Triggering re-sync...")
-            SnackbarManager.showMessage("Podaci obrisani. Ponovno skeniranje pokrenuto...")
+            android.util.Log.d("SettingsViewModel", "✅ Gmail data cleared. Triggering re-sync...")
+            SnackbarManager.showMessage("Gmail sinhronizacija resetovana. Ručni unosi sačuvani.")
             
             // 4. Trigger immediate sync
             syncNow() 
             
             // 5. Re-schedule periodic sync after this one finishes (or concurrently)
             scheduleGmailSync()
+        }
+    }
+
+    // ========== HARD RESET (Testing Only) ==========
+    private val _hardResetResult = MutableStateFlow<String?>(null)
+    val hardResetResult = _hardResetResult.asStateFlow()
+    
+    private val _isResetting = MutableStateFlow(false)
+    val isResetting = _isResetting.asStateFlow()
+    
+    /**
+     * Hard reset for testing purposes. Clears ALL data WITHOUT logging out.
+     * - Clears Firestore paid statuses
+     * - Resets per-account sync timestamps
+     * - Deletes all local receipts and EPS data
+     */
+    fun hardReset() {
+        viewModelScope.launch {
+            _isResetting.value = true
+            _hardResetResult.value = "⏳ Starting hard reset..."
+            
+            try {
+                // 0. Cancel any running syncs
+                workManager.cancelUniqueWork("GmailSync")
+                workManager.cancelUniqueWork("GmailSyncOneTime")
+                
+                // 1. Get all connected accounts
+                val accounts = secureStorage.getConnectedAccounts()
+                android.util.Log.d("SettingsViewModel", "🗑️ HARD RESET: Found ${accounts.size} accounts")
+                
+                // 2. Clear Firestore paid statuses for each account
+                accounts.forEach { email ->
+                    android.util.Log.d("SettingsViewModel", "🗑️ Clearing Firestore for: $email")
+                    firestoreRepository.deleteAllPaidStatuses(email)
+                }
+                _hardResetResult.value = "⏳ Firestore cleared..."
+                
+                // 3. Clear per-account sync timestamps
+                accounts.forEach { email ->
+                    secureStorage.setLastGmailSyncTimestamp(email, 0L)
+                }
+                // Also clear global timestamp
+                secureStorage.setLastGmailSyncTimestamp(0L)
+                _hardResetResult.value = "⏳ Sync timestamps reset..."
+                
+                // 4. Delete all local data
+                repository.deleteAllReceiptItems()
+                repository.deleteAllEpsData()
+                repository.deleteAllReceipts()
+                _hardResetResult.value = "⏳ Local database cleared..."
+                
+                // 5. Clear cache files
+                val cacheDir = context.cacheDir
+                cacheDir.listFiles()?.forEach { file ->
+                    try {
+                        if (file.isDirectory) file.deleteRecursively() else file.delete()
+                    } catch (_: Exception) {}
+                }
+                
+                android.util.Log.d("SettingsViewModel", "✅ HARD RESET COMPLETE")
+                _hardResetResult.value = "✅ Hard Reset Complete!\n" +
+                    "• Firestore paid statuses: CLEARED\n" +
+                    "• Sync timestamps: RESET\n" +
+                    "• Local receipts: DELETED\n" +
+                    "• Cache: CLEARED\n\n" +
+                    "Ready for fresh scan!"
+                    
+                SnackbarManager.showMessage("Hard reset complete! Ready for fresh scan.")
+                    
+            } catch (e: Exception) {
+                android.util.Log.e("SettingsViewModel", "❌ HARD RESET FAILED", e)
+                _hardResetResult.value = "❌ Error: ${e.message}"
+            } finally {
+                _isResetting.value = false
+            }
         }
     }
 
@@ -382,10 +478,12 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun exportCsv(context: Context) {
+        vibrationHelper.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
         launchCatching {
             val receipts = repository.getAllReceipts().first()
             val file = ExportManager.exportToCsv(context, receipts)
             if (file != null) {
+                SnackbarManager.showMessage("CSV kreiran! Izaberite gde želite da sačuvate.")
                 shareFile(context, file, "text/csv")
             } else {
                 SnackbarManager.showMessage("Export failed")
@@ -394,6 +492,7 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun importCsv(uri: android.net.Uri) {
+        vibrationHelper.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
         launchCatching {
             var importedCount = 0
             var updatedCount = 0
@@ -620,13 +719,15 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun exportPdf(context: Context) {
+        vibrationHelper.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
         launchCatching {
             val receipts = repository.getAllReceipts().first()
             val file = ExportManager.exportToPdf(context, receipts)
             if (file != null) {
+                SnackbarManager.showMessage("PDF kreiran! Izaberite gde želite da sačuvate.")
                 shareFile(context, file, "application/pdf")
             } else {
-                SnackbarManager.showMessage("Export failed")
+                SnackbarManager.showMessage("PDF export nije uspeo. Pokušajte ponovo.")
             }
         }
     }
@@ -659,59 +760,60 @@ class SettingsViewModel @Inject constructor(
     fun toggleNotifyDue3Days(enabled: Boolean) {
         preferenceManager.notifyDue3Days = enabled
         _notifyDue3Days.value = enabled
+        vibrationHelper.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
     }
     
     fun toggleNotifyDue1Day(enabled: Boolean) {
         preferenceManager.notifyDue1Day = enabled
         _notifyDue1Day.value = enabled
+        vibrationHelper.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
     }
     
     fun toggleNotifyOverdue(enabled: Boolean) {
         preferenceManager.notifyOverdue = enabled
         _notifyOverdue.value = enabled
+        vibrationHelper.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
     }
     
     fun toggleNotifyDuplicate(enabled: Boolean) {
         preferenceManager.notifyDuplicate = enabled
         _notifyDuplicate.value = enabled
+        vibrationHelper.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
     }
     
-    fun setNotificationTime(hour: Int) {
+    fun setNotificationTime(hour: Int, minute: Int) {
         preferenceManager.notificationTimeHour = hour
+        preferenceManager.notificationTimeMinute = minute
         _notificationTimeHour.value = hour
+        _notificationTimeMinute.value = minute
+        
         notificationScheduler.rescheduleNotificationChecks() // Reschedule with new time
     }
 
-    fun sendBugReport(context: Context, userMessage: String) {
-        val deviceInfo = """
+    fun sendBugReport(message: String) {
+        vibrationHelper.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.SUCCESS)
+        launchCatching {
+            val deviceInfo = """
+                App Version: 1.6
+                Android: ${android.os.Build.VERSION.RELEASE}
+                Device: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}
+                Email: ${_connectedEmail.value ?: "Anonymous"}
+            """.trimIndent()
             
-            ----------------------------------------
-            Device Info (Auto-generated):
-            App Version: 1.0.0
-            Android Version: ${android.os.Build.VERSION.RELEASE} (SDK ${android.os.Build.VERSION.SDK_INT})
-            Device: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}
-            Sync Status: ${_syncStatus.value ?: "Inactive"}
-            Connected Accounts: ${_connectedAccounts.value.size}
-            ----------------------------------------
-        """.trimIndent()
-
-        val fullBody = "$userMessage\n$deviceInfo"
-
-        val intent = android.content.Intent(android.content.Intent.ACTION_SENDTO).apply {
-            data = android.net.Uri.parse("mailto:")
-            putExtra(android.content.Intent.EXTRA_EMAIL, arrayOf("developer@platisa.com"))
-            putExtra(android.content.Intent.EXTRA_SUBJECT, "Platisa Bug Report")
-            putExtra(android.content.Intent.EXTRA_TEXT, fullBody)
-        }
-
-        try {
-            context.startActivity(android.content.Intent.createChooser(intent, "Pošalji izveštaj"))
-        } catch (e: Exception) {
-            viewModelScope.launch {
-                SnackbarManager.showMessage("Nije pronađena email aplikacija.")
-            }
+            val request = FeedbackRequest(
+                email = _connectedEmail.value ?: "anonymous@platisa.app",
+                message = message,
+                _subject = "Platisa Feedback (v1.6)",
+                device_info = deviceInfo
+            )
+            
+            // Post to Formspree Endpoint
+            feedbackApi.sendFeedback("https://formspree.io/f/mykwagzk", request)
+            
+            SnackbarManager.showMessage("Hvala! Vaša poruka je poslata.")
         }
     }
+
 
 }
 

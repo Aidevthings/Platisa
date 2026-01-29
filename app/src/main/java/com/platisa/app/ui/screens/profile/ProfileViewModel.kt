@@ -24,8 +24,13 @@ data class SplashOption(
 class ProfileViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val secureStorage: SecureStorage,
-    private val preferenceManager: com.platisa.app.core.data.preferences.PreferenceManager
+    private val preferenceManager: com.platisa.app.core.data.preferences.PreferenceManager,
+    private val vibrationHelper: com.platisa.app.core.common.VibrationHelper
 ) : BaseViewModel() {
+
+    fun vibrate(type: com.platisa.app.core.common.VibrationHelper.HapticType) {
+        vibrationHelper.vibrate(type)
+    }
 
     private val _userName = MutableStateFlow(secureStorage.getUserName())
     val userName = _userName.asStateFlow()
@@ -42,12 +47,11 @@ class ProfileViewModel @Inject constructor(
     // Predefined avatars (resource IDs as strings)
     val predefinedAvatars = listOf(
         "avatar_3", "avatar_4",
-        "avatar_5", "avatar_6", "avatar_7", "avatar_8", "avatar_9", "avatar_10"
+        "avatar_5", "avatar_6", "avatar_7", "avatar_8"
     )
 
     val celebrationImages = listOf(
-        "celebration_4", "celebration_dance", "macka", "celebration_2", "celebration_3", 
-        "celebration_5", "celebration_6"
+        "celebration_4", "celebration_dance", "macka", "celebration_2", "celebration_3"
     )
 
     val splashOptions = listOf(
@@ -63,6 +67,7 @@ class ProfileViewModel @Inject constructor(
         viewModelScope.launch {
             secureStorage.setUserName(name)
             _userName.value = name
+            vibrationHelper.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.SUCCESS)
         }
     }
 
@@ -70,6 +75,7 @@ class ProfileViewModel @Inject constructor(
         viewModelScope.launch {
             secureStorage.setAvatarPath("predefined:$avatarName")
             _avatarPath.value = "predefined:$avatarName"
+            vibrationHelper.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
         }
     }
 
@@ -94,6 +100,7 @@ class ProfileViewModel @Inject constructor(
                 val path = "custom:${destFile.absolutePath}"
                 secureStorage.setAvatarPath(path)
                 _avatarPath.value = path
+                vibrationHelper.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.SUCCESS)
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -104,6 +111,7 @@ class ProfileViewModel @Inject constructor(
         viewModelScope.launch {
             secureStorage.setCelebrationImagePath("predefined:$imageName")
             _celebrationImagePath.value = "predefined:$imageName"
+            vibrationHelper.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
         }
     }
 
@@ -111,6 +119,7 @@ class ProfileViewModel @Inject constructor(
         viewModelScope.launch {
             secureStorage.setAvatarPath(null)
             _avatarPath.value = null
+            vibrationHelper.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
         }
     }
 
@@ -118,6 +127,7 @@ class ProfileViewModel @Inject constructor(
         viewModelScope.launch {
             secureStorage.setCelebrationImagePath(null)
             _celebrationImagePath.value = null
+            vibrationHelper.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
         }
     }
 
@@ -125,6 +135,7 @@ class ProfileViewModel @Inject constructor(
         viewModelScope.launch {
             preferenceManager.splashScreenStyle = style
             _splashScreenStyle.value = style
+            vibrationHelper.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
         }
     }
 }

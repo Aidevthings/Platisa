@@ -56,8 +56,13 @@ data class CategoryDetailedStats(
 class AnalyticsViewModel @Inject constructor(
     private val repository: ReceiptRepository,
     private val preferenceManager: com.platisa.app.core.data.preferences.PreferenceManager,
-    private val secureStorage: com.platisa.app.core.domain.SecureStorage
+    private val secureStorage: com.platisa.app.core.domain.SecureStorage,
+    private val vibrationHelper: com.platisa.app.core.common.VibrationHelper
 ) : BaseViewModel() {
+
+    fun vibrate(type: com.platisa.app.core.common.VibrationHelper.HapticType) {
+        vibrationHelper.vibrate(type)
+    }
 
     private val _currency = kotlinx.coroutines.flow.MutableStateFlow(secureStorage.getCurrency())
     val currency: kotlinx.coroutines.flow.StateFlow<String> = _currency.asStateFlow()
@@ -71,6 +76,7 @@ class AnalyticsViewModel @Inject constructor(
 
     fun setCurrency(newCurrency: String) {
         _currency.value = newCurrency
+        vibrationHelper.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
     }
 
     // Category Specific Periods (Independent of main graph)
@@ -82,18 +88,22 @@ class AnalyticsViewModel @Inject constructor(
 
     fun setPeriod(period: TimePeriod) {
         _selectedPeriod.value = period
+        vibrationHelper.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
     }
     
     fun setGraphPeriod(period: GraphPeriod) {
         _selectedGraphPeriod.value = period
+        vibrationHelper.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
     }
 
     fun setGroceryPeriod(period: GraphPeriod) {
         _selectedGroceryPeriod.value = period
+        vibrationHelper.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
     }
 
     fun setPharmacyPeriod(period: GraphPeriod) {
         _selectedPharmacyPeriod.value = period
+        vibrationHelper.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
     }
 
     private val _selectedRestaurantPeriod = kotlinx.coroutines.flow.MutableStateFlow(GraphPeriod.MONTHLY)
@@ -101,6 +111,7 @@ class AnalyticsViewModel @Inject constructor(
 
     fun setRestaurantPeriod(period: GraphPeriod) {
         _selectedRestaurantPeriod.value = period
+        vibrationHelper.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
     }
 
     // Feature Flag
@@ -128,7 +139,11 @@ class AnalyticsViewModel @Inject constructor(
                 sixMonthsAgo.add(java.util.Calendar.MONTH, -6)
                 date.after(sixMonthsAgo.time)
             }
-            TimePeriod.YEARLY -> billYear == currentYear
+            TimePeriod.YEARLY -> {
+                val oneYearAgo = java.util.Calendar.getInstance()
+                oneYearAgo.add(java.util.Calendar.YEAR, -1)
+                date.after(oneYearAgo.time)
+            }
         }
     }
 
@@ -136,7 +151,7 @@ class AnalyticsViewModel @Inject constructor(
 
     // Helper for currency conversion
     private fun convertAmount(amount: BigDecimal, fromCurrency: String, toCurrency: String): BigDecimal {
-        val rate = BigDecimal("117.5")
+        val rate = BigDecimal(preferenceManager.lastKnownEuroRate.toString())
         return if (toCurrency == "EUR" && fromCurrency == "RSD") {
             amount.divide(rate, 2, java.math.RoundingMode.HALF_UP)
         } else if (toCurrency == "RSD" && fromCurrency == "EUR") {

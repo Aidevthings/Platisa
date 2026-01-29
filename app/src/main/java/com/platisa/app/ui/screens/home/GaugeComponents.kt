@@ -43,6 +43,7 @@ import coil.ImageLoader
 import coil.decode.GifDecoder
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.scale
 import android.os.Build
 import coil.decode.ImageDecoderDecoder
 import android.util.Log
@@ -137,8 +138,9 @@ fun GaugePanel(
                 contentDescription = "Celebration Dance",
                 modifier = Modifier
                     .fillMaxSize()
+                    .scale(1.1f) // Slight zoom to ensure edge-to-edge coverage
                     .alpha(0.9f), // Almost fully opaque for the dancing man
-                contentScale = androidx.compose.ui.layout.ContentScale.Fit // Fit the dancer in the frame
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop // Crop ensures we fill the entire space
             )
         } else {
             // Currency Indicators
@@ -229,7 +231,7 @@ fun AccountBalanceGauge(
     val isDark = customColors.isDark
     
     // Theme Colors for Canvas
-    val trackColor = if (isDark) Color(0xFF151515) else Color(0xFFE0E0E0)
+    val trackColor = if (isDark) Color(0xFF353535) else Color(0xFFE0E0E0)
     val trackShadowColor = if (isDark) Color.Black else Color.Gray
     val needleColor = if (isDark) Color.White else Color.DarkGray
     val needleGradientStart = if (isDark) Color.White else Color.LightGray

@@ -16,8 +16,13 @@ import javax.inject.Inject
 class BillDetailsViewModel @Inject constructor(
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
     private val receiptRepository: ReceiptRepository,
-    private val epsDataRepository: EpsDataRepository
+    private val epsDataRepository: EpsDataRepository,
+    private val vibrationHelper: com.platisa.app.core.common.VibrationHelper
 ) : ViewModel() {
+
+    fun vibrate(type: com.platisa.app.core.common.VibrationHelper.HapticType) {
+        vibrationHelper.vibrate(type)
+    }
 
     private val _billDetails = MutableStateFlow<BillDetailsState>(BillDetailsState.Loading)
     val billDetails: StateFlow<BillDetailsState> = _billDetails.asStateFlow()
@@ -40,13 +45,16 @@ class BillDetailsViewModel @Inject constructor(
                 // Load receipt
                 val receipt = receiptRepository.getReceiptById(receiptId)
                 if (receipt != null) {
+                    val isLatest = receiptRepository.isLatestReceipt(receipt.merchantName, receipt.date)
+                    
                     // Load EPS data if available
                     epsDataRepository.getEpsDataByReceiptId(receiptId).collect { epsData ->
                         _billDetails.value = BillDetailsState.Success(
                             receipt = receipt,
                             vtConsumption = epsData?.consumptionVt?.toInt() ?: 0,
                             ntConsumption = epsData?.consumptionNt?.toInt() ?: 0,
-                            billType = determineBillType(receipt)
+                            billType = determineBillType(receipt),
+                            isLatestForMerchant = isLatest
                         )
                     }
                     
@@ -63,7 +71,7 @@ class BillDetailsViewModel @Inject constructor(
         }
     }
 
-    fun saveQrCode() {
+    fun saveQrCode(payTotalDebt: Boolean = false) {
         viewModelScope.launch {
             try {
                 _saveQrStatus.value = SaveQrStatus.Saving
@@ -72,6 +80,13 @@ class BillDetailsViewModel @Inject constructor(
                 val currentState = _billDetails.value
                 if (currentState is BillDetailsState.Success) {
                     val receipt = currentState.receipt
+
+                    // SAFEGUARD: Delete any existing saved QR before saving a new one
+                    // This prevents orphaned QR files if user somehow triggers save again
+                    if (!receipt.savedQrUri.isNullOrEmpty()) {
+                        android.util.Log.d("BillDetailsVM", "Deleting existing QR before saving new one: ${receipt.savedQrUri}")
+                        com.platisa.app.core.common.QrSaveManager.deleteQrFromGallery(context, receipt.savedQrUri)
+                    }
 
                     // Actually save QR code to gallery with enhanced visual details
                     val formattedAmount = com.platisa.app.core.common.Formatters.formatCurrency(receipt.totalAmount)
@@ -86,10 +101,21 @@ class BillDetailsViewModel @Inject constructor(
                     )
 
                     // Update receipt status to PROCESSING (pink/magenta) and store the gallery URI
+                    // Also store a flag if Total Debt was selected, so markAsPaid can cascade later
                     val updatedReceipt = receipt.copy(
                         paymentStatus = com.platisa.app.core.domain.model.PaymentStatus.PROCESSING,
-                        savedQrUri = qrUri?.toString()
+                        savedQrUri = qrUri?.toString(),
+                        metadata = if (payTotalDebt) {
+                            (receipt.metadata ?: "") + " [TOTAL_DEBT_SELECTED]"
+                        } else {
+                            receipt.metadata
+                        }
                     )
+                    
+                    android.util.Log.d("BillDetailsVM", "📋 saveQrCode: Setting status to PROCESSING for receipt ${receipt.id}")
+                    android.util.Log.d("BillDetailsVM", "📋 saveQrCode: payTotalDebt=$payTotalDebt, metadata=${updatedReceipt.metadata}")
+                    android.util.Log.d("BillDetailsVM", "📋 saveQrCode: New Status = ${updatedReceipt.paymentStatus}")
+                    
                     receiptRepository.updateReceipt(updatedReceipt)
 
                     _saveQrStatus.value = SaveQrStatus.Success
@@ -105,7 +131,7 @@ class BillDetailsViewModel @Inject constructor(
         }
     }
 
-    fun markAsPaid() {
+    fun markAsPaid(payTotalDebt: Boolean = false) {
         viewModelScope.launch {
             try {
                 val currentState = _billDetails.value
@@ -116,30 +142,37 @@ class BillDetailsViewModel @Inject constructor(
                     val savedQrUri = receipt.savedQrUri
                     if (!savedQrUri.isNullOrEmpty()) {
                         com.platisa.app.core.common.QrSaveManager.deleteQrFromGallery(context, savedQrUri)
-                        android.util.Log.d("BillDetailsVM", "Deleted generated QR from gallery: $savedQrUri")
                     }
 
                     // 2. Delete Original Receipt Image (The one scanned/photo taken)
-                    // Only delete if it's a file path (starts with / or has manual source)
-                    // We check if imagePath is not empty and looks like a file path
                     val originalImagePath = receipt.imagePath
                     if (originalImagePath.isNotBlank()) {
                          try {
                               val file = java.io.File(originalImagePath)
                               if (file.exists()) {
-                                  val deleted = file.delete()
-                                  android.util.Log.d("BillDetailsVM", "Deleted original receipt image: $originalImagePath (Success: $deleted)")
+                                  file.delete()
                               }
                          } catch (e: Exception) {
                              android.util.Log.e("BillDetailsVM", "Failed to delete original image", e)
                          }
                     }
 
+                    // CASCADE PAYMENT - Check if Total Debt was selected when QR was saved
+                    val metadataContainsFlag = receipt.metadata?.contains("[TOTAL_DEBT_SELECTED]") == true
+                    val shouldCascade = payTotalDebt || metadataContainsFlag
+                    
+                    if (shouldCascade) {
+                        processCascadePayment(receipt.merchantName, receipt.id)
+                    }
+
                     // 3. Update status to PAID and Clear Image Paths
+                    // Also clean up the TOTAL_DEBT_SELECTED flag from metadata
+                    val cleanedMetadata = receipt.metadata?.replace(" [TOTAL_DEBT_SELECTED]", "") ?: ""
                     val updatedReceipt = receipt.copy(
                         paymentStatus = com.platisa.app.core.domain.model.PaymentStatus.PAID,
-                        savedQrUri = null,
-                        imagePath = "" // Clear the path as the file is gone
+                        savedQrUri = null, // Clear the URI as we deleted the file
+                        imagePath = "", // Clear the path as the file is gone
+                        metadata = cleanedMetadata
                     )
                     receiptRepository.updateReceipt(updatedReceipt)
                     
@@ -152,6 +185,14 @@ class BillDetailsViewModel @Inject constructor(
                 android.util.Log.e("BillDetailsVM", "Error marking as paid", e)
                 com.platisa.app.core.common.SnackbarManager.showMessage("Greška: ${e.message}")
             }
+        }
+    }
+
+    private suspend fun processCascadePayment(merchantName: String, excludeId: Long) {
+        try {
+            receiptRepository.markPastBillsAsPaid(merchantName, excludeId)
+        } catch (e: Exception) {
+            android.util.Log.e("BillDetailsVM", "Failed to cascade payment", e)
         }
     }
 
@@ -192,7 +233,8 @@ sealed class BillDetailsState {
         val receipt: Receipt,
         val vtConsumption: Int,
         val ntConsumption: Int,
-        val billType: BillType
+        val billType: BillType,
+        val isLatestForMerchant: Boolean = true // Default true for compatibility
     ) : BillDetailsState()
     data class Error(val message: String) : BillDetailsState()
 }

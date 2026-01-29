@@ -16,6 +16,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 @HiltViewModel
 class SubscriptionViewModel @Inject constructor(
     private val trialRepository: TrialRepository,
+    private val billingManager: com.platisa.app.core.billing.BillingManager,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -26,8 +27,44 @@ class SubscriptionViewModel @Inject constructor(
     private val _daysRemaining = MutableStateFlow<Long>(0)
     val daysRemaining = _daysRemaining.asStateFlow()
 
+    // Plan Selection (YEARLY is default/best value)
+    private val _selectedPlan = MutableStateFlow("YEARLY")
+    val selectedPlan = _selectedPlan.asStateFlow()
+
+    // Real Billing Data
+    val productDetails = billingManager.productDetails
+    val purchases = billingManager.purchases
+
     init {
         checkStatus()
+        observePurchases()
+    }
+
+    private fun observePurchases() {
+        viewModelScope.launch {
+            purchases.collect { purchaseList ->
+                // If any purchase is valid/active, unlock usage
+                if (purchaseList.isNotEmpty()) {
+                    // Grants "Lifetime" or "Subscribed" access locally
+                    trialRepository.enableLifetimeAccess() 
+                    checkStatus()
+                }
+            }
+        }
+    }
+
+    fun selectPlan(planId: String) {
+        _selectedPlan.value = planId
+    }
+
+    fun buySubscription(activity: android.app.Activity) {
+        // Map internal ID to Google Play Product ID
+        val productId = if (_selectedPlan.value == "YEARLY") 
+            com.platisa.app.core.billing.BillingManager.SUB_YEARLY 
+        else 
+            com.platisa.app.core.billing.BillingManager.SUB_MONTHLY
+            
+        billingManager.launchPurchaseFlow(activity, productId)
     }
 
     fun checkStatus() {
@@ -36,6 +73,7 @@ class SubscriptionViewModel @Inject constructor(
             val email = account?.email ?: return@launch
             
             try {
+                // Check repo status (includes local overrides like 'isLifetime' from purchase)
                 val result = trialRepository.checkTrialStatus(email)
                 _status.value = result
                 
@@ -49,6 +87,7 @@ class SubscriptionViewModel @Inject constructor(
             }
         }
     }
+    
     fun applyPromoCode(code: String): String {
         val cleanCode = code.trim().uppercase()
         val founders = listOf("CVRLE", "GARA", "JANKO", "BOSILJKA", "BOSA") // Lifetime Access
@@ -59,14 +98,14 @@ class SubscriptionViewModel @Inject constructor(
                     trialRepository.enableLifetimeAccess()
                     checkStatus() // Refresh UI
                 }
-                "Dobrodosli osnivaču! (Lifetime Access Activated)"
+                "Dobrodošli osnivaču! (Lifetime Access Activated)"
             }
             cleanCode == "DRUGA_SANSA" || cleanCode == "DRUGASANSA" -> {
                 viewModelScope.launch {
-                    trialRepository.extendTrial(7)
+                    trialRepository.extendTrial(30)
                     checkStatus()
                 }
-                "Trial produžen za 7 dana!"
+                "Trial produžen za 30 dana! (Druga Šansa)"
             }
             cleanCode == "PLATISA30" -> {
                  viewModelScope.launch {

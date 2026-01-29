@@ -24,6 +24,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -60,6 +61,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.material.icons.filled.QrCodeScanner
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -75,7 +79,15 @@ fun ComparisonScreen(
 ) {
     val searchQuery by viewModel.searchQuery.collectAsState()
     val searchResults by viewModel.searchResults.collectAsState()
+    val currency by viewModel.currency.collectAsState()
+    val conversionRate by viewModel.conversionRate.collectAsState()
+
     val fiscalReceipts by viewModel.fiscalReceipts.collectAsState()
+    val isDarkTheme by viewModel.isDarkTheme.collectAsState(initial = false)
+    val customColors = LocalPlatisaColors.current
+    
+    // Theme-dependent accent color: Neon Cyan for Dark, Chill Green for Light
+    val mainAccentColor = if (isDarkTheme) customColors.neonCyan else ChillGreen
     
     val dateFormat = SimpleDateFormat("dd.MM.yyyy", Locale("sr", "RS"))
     val localFocusManager = androidx.compose.ui.platform.LocalFocusManager.current
@@ -93,8 +105,10 @@ fun ComparisonScreen(
                 navigationIcon = {
                     IconButton(onClick = { 
                         if (searchQuery.isNotBlank()) {
+                            viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
                             viewModel.onSearchQueryChanged("")
                         } else {
+                            viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
                             navController.popBackStack() 
                         }
                     }) {
@@ -111,31 +125,69 @@ fun ComparisonScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 8.dp),
-            placeholder = { Text("Pretraži proizvod (npr. mleko, hleb)...", color = Color.DarkGray) },
+            placeholder = { Text("Pretraži proizvod (npr. mleko, hleb)...", color = if (isDarkTheme) Color.LightGray else Color.DarkGray) },
             leadingIcon = { 
                 Icon(
                     Icons.Default.Search, 
                     contentDescription = null, 
-                    tint = ChillGreen,
+                    tint = mainAccentColor,
                     modifier = Modifier.size(48.dp)
                 ) 
             },
             singleLine = true,
             shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = Color.Black,
-                unfocusedTextColor = Color.Black,
-                focusedContainerColor = Color.White,
-                unfocusedContainerColor = Color.White,
-                focusedBorderColor = ChillGreen,
-                unfocusedBorderColor = ChillGreen,
-                cursorColor = Color.Black
+                focusedTextColor = if (isDarkTheme) Color.White else Color.Black,
+                unfocusedTextColor = if (isDarkTheme) Color.White else Color.Black,
+                focusedContainerColor = if (isDarkTheme) Color(0xFF1E1E1E) else Color.White,
+                unfocusedContainerColor = if (isDarkTheme) Color(0xFF1E1E1E) else Color.White,
+                focusedBorderColor = mainAccentColor,
+                unfocusedBorderColor = mainAccentColor,
+                cursorColor = if (isDarkTheme) Color.White else Color.Black
             ),
             keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Search),
             keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = {
                 localFocusManager.clearFocus()
             })
         )
+        
+        // Detailed Scan Button
+        val scanButtonBg = if (isDarkTheme) Color(0xFF1E1E1E) else Color.White
+        
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp)
+                .height(56.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(scanButtonBg)
+                .border(1.dp, mainAccentColor, RoundedCornerShape(16.dp))
+                .border(1.dp, mainAccentColor, RoundedCornerShape(16.dp))
+                .clickable { 
+                    viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
+                    navController.navigate(com.platisa.app.ui.navigation.Screen.Camera.route) 
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    androidx.compose.material.icons.Icons.Default.QrCodeScanner,
+                    contentDescription = "Skeniraj",
+                    tint = mainAccentColor,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    text = "Skeniraj QR Kod",
+                    color = mainAccentColor,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
 
         LazyColumn(
             modifier = Modifier
@@ -194,7 +246,7 @@ fun ComparisonScreen(
                     
                     items(sortedCategories) { category ->
                          val categoryReceipts = groupedReceipts[category] ?: emptyList()
-                         MarketCategoryDropdown(category, categoryReceipts, dateFormat, navController)
+                         MarketCategoryDropdown(category, categoryReceipts, dateFormat, navController, currency, conversionRate, viewModel)
                          Spacer(modifier = Modifier.height(12.dp))
                     }
                     
@@ -396,7 +448,10 @@ fun MarketCategoryDropdown(
     category: BillCategory, 
     receipts: List<com.platisa.app.core.domain.model.Receipt>,
     dateFormat: SimpleDateFormat,
-    navController: NavController
+    navController: NavController,
+    currency: String,
+    conversionRate: java.math.BigDecimal,
+    viewModel: ComparisonViewModel
 ) {
     var isExpanded by remember { mutableStateOf(false) }
     val isDark = LocalPlatisaColors.current.isDark
@@ -426,7 +481,10 @@ fun MarketCategoryDropdown(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { isExpanded = !isExpanded }
+                .clickable { 
+                    viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
+                    isExpanded = !isExpanded 
+                }
                 .background(headerBg)
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -467,8 +525,15 @@ fun MarketCategoryDropdown(
             val totalAmount = receipts.sumOf { it.totalAmount }
             
             Column(horizontalAlignment = Alignment.End) {
+                 val totalAmount = receipts.sumOf { it.totalAmount }
+                 val displayedTotal = if (currency == "EUR") {
+                     "€" + java.text.DecimalFormat("#,##0.00").format(totalAmount.divide(conversionRate, 2, java.math.RoundingMode.HALF_UP))
+                 } else {
+                     Formatters.formatCurrency(totalAmount)
+                 }
+                 
                  Text(
-                    text = Formatters.formatCurrency(totalAmount),
+                    text = displayedTotal,
                     style = MaterialTheme.typography.titleMedium,
                     color = headerTextColor, 
                     fontWeight = FontWeight.Bold
@@ -490,18 +555,20 @@ fun MarketCategoryDropdown(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 16.dp, bottom = 8.dp, start = 16.dp, end = 16.dp) 
+                    .padding(top = 16.dp, bottom = 16.dp, start = 16.dp, end = 16.dp),
+                verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp) // Added spacing
             ) {
-                 // Add Divider like in StatisticsScreen
-                 androidx.compose.material3.Divider(color = borderColor, thickness = 1.dp)
-                 Spacer(modifier = Modifier.height(8.dp))
+                // Divider removed as per plan, individual cards provide separation
 
                 receipts.forEach { receipt ->
                      CompactFiscalReceiptRow(
                         receipt = receipt,
                         onClick = {
+                            viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
                             navController.navigate(com.platisa.app.ui.navigation.Screen.FiscalReceiptDetails.createRoute(receipt.id))
-                        }
+                        },
+                        currency = currency,
+                        conversionRate = conversionRate
                     )
                 }
             }
@@ -512,40 +579,84 @@ fun MarketCategoryDropdown(
 @Composable
 fun CompactFiscalReceiptRow(
     receipt: com.platisa.app.core.domain.model.Receipt,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    currency: String,
+    conversionRate: java.math.BigDecimal
 ) {
     val isDark = LocalPlatisaColors.current.isDark
-    // Match colors from StatisticsScreen (CategoryDetailCard)
-    // Merchant: White (alpha 0.8) if dark, else Black/DarkGray
-    val mainTextColor = if (isDark) Color.White.copy(alpha = 0.8f) else Color.Black
     
-    // Amount: Green (0xFF4CAF50) - ChillGreen
-    val amountColor = Color(0xFF4CAF50)
+    // Theme Border Colors
+    val borderColor = if (isDark) Color(0xFF00E5FF) else Color(0xFFA1887F)
+    val containerColor = if (isDark) CardSurface else Color.White
+    
+    // Text Colors
+    val mainTextColor = if (isDark) Color.White.copy(alpha = 0.9f) else Color.Black
+    val subTextColor = if (isDark) Color.White.copy(alpha = 0.6f) else Color.Gray
+    val amountColor = if (isDark) Color(0xFF00E5FF) else Color(0xFF4CAF50)
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = 12.dp),
-        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        color = containerColor,
+        border = androidx.compose.foundation.BorderStroke(1.dp, borderColor.copy(alpha = 0.6f)),
+        shadowElevation = if (isDark) 4.dp else 2.dp
     ) {
-        Text(
-            text = receipt.merchantName,
-            fontSize = 14.sp,
-            color = mainTextColor,
-            fontWeight = FontWeight.Medium,
-            maxLines = 1,
-            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f).padding(end = 8.dp)
-        )
-        Text(
-            text = Formatters.formatCurrency(receipt.totalAmount),
-            fontSize = 14.sp,
-            color = amountColor,
-            fontWeight = FontWeight.SemiBold,
-            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
-        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // LEFT PART: 2/3 of space -> Name and Info
+            Column(
+                modifier = Modifier
+                    .weight(2f)
+                    .padding(end = 8.dp)
+            ) {
+                Text(
+                    text = receipt.merchantName,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = mainTextColor,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                )
+                
+                // Address or Date (as secondary info)
+                val secondaryText = receipt.recipientAddress ?: java.text.SimpleDateFormat("dd.MM.yyyy", java.util.Locale("sr", "RS")).format(receipt.date)
+                
+                Text(
+                    text = secondaryText,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = subTextColor,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+            
+            // RIGHT PART: 1/3 of space -> Total Sum
+            Box(
+                modifier = Modifier.weight(1f),
+                contentAlignment = Alignment.CenterEnd
+            ) {
+                val displayedAmount = if (currency == "EUR") {
+                    "€" + java.text.DecimalFormat("#,##0.00").format(receipt.totalAmount.divide(conversionRate, 2, java.math.RoundingMode.HALF_UP))
+                } else {
+                   Formatters.formatCurrency(receipt.totalAmount)
+                }
+                
+                Text(
+                    text = displayedAmount,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = amountColor,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                    maxLines = 1
+                )
+            }
+        }
     }
 }
 

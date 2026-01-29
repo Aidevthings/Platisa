@@ -61,6 +61,17 @@ class SecureStorageImpl @Inject constructor(
     override fun setLastGmailSyncTimestamp(timestamp: Long) {
         sharedPreferences.edit().putLong("last_gmail_sync", timestamp).apply()
     }
+    
+    // Per-account sync timestamp (for multi-account support)
+    override fun getLastGmailSyncTimestamp(email: String): Long {
+        val key = "last_gmail_sync_${email.lowercase()}"
+        return sharedPreferences.getLong(key, 0L)
+    }
+    
+    override fun setLastGmailSyncTimestamp(email: String, timestamp: Long) {
+        val key = "last_gmail_sync_${email.lowercase()}"
+        sharedPreferences.edit().putLong(key, timestamp).apply()
+    }
 
     override fun getConnectedAccounts(): Set<String> {
         return sharedPreferences.getStringSet("connected_accounts", emptySet()) ?: emptySet()

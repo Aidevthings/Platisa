@@ -75,11 +75,11 @@ val SubscriptionCardDark = Color(0xFF1A1D24)
 // Home Screen Icons
 // Light
 val IconBellLight = Color(0xFF03A9F4)   // Light Blue
-val IconThemeLight = Color(0xFF0D47A1)  // Dark Blue
+val IconThemeLight = Color(0xFF9C27B0)  // Deep Purple (Moon)
 val IconHelpLight = Color(0xFF4CAF50)   // Normal Green
 // Dark
 val IconBellDark = Color(0xFF00E5FF)    // Cyan
-val IconThemeDark = Color(0xFFFFD700)   // Yellow
+val IconThemeDark = Color(0xFFFFD700)   // Yellow (Sun)
 val IconHelpDark = Color(0xFF00E676)    // Bright Green
 
 // Charts (Cyberpunk)

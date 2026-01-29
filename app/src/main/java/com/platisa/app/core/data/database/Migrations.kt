@@ -44,3 +44,39 @@ val MIGRATION_10_11 = object : Migration(10, 11) {
     }
 }
 
+val MIGRATION_11_12 = object : Migration(11, 12) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        // Add currentMonthAmount and previousDebtAmount for bill separation
+        database.execSQL("ALTER TABLE receipts ADD COLUMN currentMonthAmount TEXT")
+        database.execSQL("ALTER TABLE receipts ADD COLUMN previousDebtAmount TEXT")
+    }
+}
+
+val MIGRATION_12_13 = object : Migration(12, 13) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        // No-op migration - schema already up to date, version bump to trigger destructive migration
+    }
+}
+
+val MIGRATION_13_14 = object : Migration(13, 14) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        // Add sourceEmail column for proper Firestore sync
+        database.execSQL("ALTER TABLE receipts ADD COLUMN sourceEmail TEXT DEFAULT NULL")
+        
+        // Backfill: Extract email from metadata where present (SOURCE_EMAIL:user@gmail.com)
+        database.execSQL("""
+            UPDATE receipts 
+            SET sourceEmail = SUBSTR(metadata, INSTR(metadata, 'SOURCE_EMAIL:') + 13)
+            WHERE metadata LIKE '%SOURCE_EMAIL:%'
+        """)
+    }
+}
+
+val MIGRATION_14_15 = object : Migration(14, 15) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        // Add Payer Name and Address (for property identification)
+        database.execSQL("ALTER TABLE receipts ADD COLUMN payerName TEXT")
+        database.execSQL("ALTER TABLE receipts ADD COLUMN payerAddress TEXT")
+    }
+}
+

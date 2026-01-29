@@ -1,8 +1,11 @@
 package com.platisa.app.ui.screens.splash
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
@@ -47,13 +50,12 @@ fun SplashScreen(
         }
     }
 
-    val isDarkTheme = androidx.compose.foundation.isSystemInDarkTheme()
+    // Use saved theme preference (respects user's choice) instead of system theme
+    val isDarkTheme = viewModel.isDarkTheme
     
     val splashImageRes = when (viewModel.splashScreenStyle) {
-        "LIGHT" -> {
-             // Adaptive Default: Check system theme
-             if (isDarkTheme) R.drawable.splash_background else R.drawable.platisa_greetings_image_light
-        }
+
+        "DARK" -> R.drawable.splash_background
         "SPLASH_1" -> R.drawable.splash_option_1
         "SPLASH_2" -> R.drawable.splash_option_2
         "SPLASH_3" -> R.drawable.splash_option_3
@@ -62,13 +64,25 @@ fun SplashScreen(
              if (isDarkTheme) R.drawable.splash_background else R.drawable.platisa_greetings_image_light
         }
     }
+    
+    // Background color matches splash screen theme
+    val backgroundColor = if (isDarkTheme) {
+        androidx.compose.ui.graphics.Color(0xFF080B16) // Dark theme background
+    } else {
+        androidx.compose.ui.graphics.Color.White // Light theme background
+    }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets(0, 0, 0, 0)) // Ignore all system bars - true full screen
+            .background(backgroundColor)
+    ) {
         Image(
             painter = painterResource(id = splashImageRes),
             contentDescription = "Splash Screen Image",
             modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop
+            contentScale = ContentScale.FillBounds
         )
     }
 }

@@ -146,17 +146,18 @@ fun SettingsScreen(
         }
     }
 
-    // Battery Optimization Logic
-    DisposableEffect(Lifecycle.Event.ON_RESUME) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                viewModel.checkBatteryOptimization()
-            }
+    // Auto-scroll to section if requested
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    LaunchedEffect(openSection) {
+        if (openSection == "notifications") {
+            // Delay slightly to allow layout to settle
+            kotlinx.coroutines.delay(300) 
+            listState.animateScrollToItem(6) // Index 6 is Notifications section
         }
-        val lifecycle = (context as? LifecycleOwner)?.lifecycle
-        lifecycle?.addObserver(observer)
-        onDispose { lifecycle?.removeObserver(observer) }
     }
+
+    // Battery Optimization Logic Removed per user request
+
 
 
     // --- UI Structure ---
@@ -168,12 +169,16 @@ fun SettingsScreen(
             Column(modifier = Modifier.fillMaxSize()) {
                 // 1. Top Bar
                 TopBar(
-                    onBackClick = { navController.navigateUp() },
+                    onBackClick = { 
+                        viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
+                        navController.navigateUp() 
+                    },
                     title = "Podešavanja"
                 )
 
                 // 2. Content List
                 LazyColumn(
+                    state = listState,
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(horizontal = 16.dp),
@@ -195,7 +200,10 @@ fun SettingsScreen(
                             title = "Gmail Nalozi",
                             icon = Icons.Filled.Email,
                             expanded = expanded,
-                            onToggle = { expanded = !expanded }
+                            onToggle = { 
+                                viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
+                                expanded = !expanded 
+                            }
                         ) {
                             if (connectedAccounts.isEmpty()) {
                                 SettingsItemCard {
@@ -250,7 +258,10 @@ fun SettingsScreen(
                         val subStatus by viewModel.subscriptionStatus.collectAsState()
                         // Using a simple Clickable Panel for navigation
                         SettingsGlassPanel(
-                            modifier = Modifier.clickable { navController.navigate("subscription_paywall") }
+                            modifier = Modifier.clickable { 
+                                viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
+                                navController.navigate("subscription_paywall") 
+                            }
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically
@@ -287,7 +298,10 @@ fun SettingsScreen(
                             title = "Sinhronizacije Putem",
                             icon = Icons.Filled.Wifi,
                             expanded = expanded,
-                            onToggle = { expanded = !expanded }
+                            onToggle = { 
+                                viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
+                                expanded = !expanded 
+                            }
                         ) {
                             SettingsItemCard {
                                 SwitchRow(
@@ -309,7 +323,6 @@ fun SettingsScreen(
 
                     // Preferences
                     item {
-                        val biometric by viewModel.biometricEnabled.collectAsState()
                         val currency by viewModel.currency.collectAsState()
                         var expanded by remember { mutableStateOf(false) }
 
@@ -317,13 +330,26 @@ fun SettingsScreen(
                             title = "Preferencije",
                             icon = Icons.Filled.Settings,
                             expanded = expanded,
-                            onToggle = { expanded = !expanded }
+                            onToggle = { 
+                                viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
+                                expanded = !expanded 
+                            }
                         ) {
                             SettingsItemCard {
+                                val haptic by viewModel.hapticEnabled.collectAsState()
                                 SwitchRow(
-                                    label = "Biometrija",
-                                    checked = biometric,
-                                    onCheckedChange = { viewModel.toggleBiometric(it) }
+                                    label = "Haptički odziv (Vibracija)",
+                                    checked = haptic,
+                                    onCheckedChange = { viewModel.toggleHaptic(it) }
+                                )
+                            }
+                            Spacer(Modifier.height(12.dp))
+                            SettingsItemCard {
+                                val isDark by viewModel.isDarkTheme.collectAsState()
+                                SwitchRow(
+                                    label = "Tamna Tema (Dark Mode)",
+                                    checked = isDark,
+                                    onCheckedChange = { viewModel.toggleTheme(it) }
                                 )
                             }
                             Spacer(Modifier.height(12.dp))
@@ -358,65 +384,73 @@ fun SettingsScreen(
                             title = "Obaveštenja",
                             icon = Icons.Filled.Notifications,
                             expanded = expanded,
-                            onToggle = { expanded = !expanded }
+                            onToggle = { 
+                                viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
+                                expanded = !expanded 
+                            }
                         ) {
                             SettingsItemCard { SwitchRow("3 dana pre roka", notifyDue3, { viewModel.toggleNotifyDue3Days(it) }) }
                             Spacer(Modifier.height(12.dp))
                             SettingsItemCard { SwitchRow("1 dan pre roka", notifyDue1, { viewModel.toggleNotifyDue1Day(it) }) }
                             Spacer(Modifier.height(12.dp))
+                            SettingsItemCard { 
+                                val timeHour by viewModel.notificationTimeHour.collectAsState()
+                                val timeMinute by viewModel.notificationTimeMinute.collectAsState()
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column {
+                                        Text("Vreme podsetnika", color = MaterialTheme.colorScheme.onSurface, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                                        Text("Kada da vas podsetimo?", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                                    }
+                                    
+                                    // Time Picker Dialog Trigger
+                                    Button(
+                                        onClick = { 
+                                            viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
+                                            android.app.TimePickerDialog(
+                                                context,
+                                                { _, hourOfDay, minute ->
+                                                    viewModel.setNotificationTime(hourOfDay, minute)
+                                                },
+                                                timeHour,
+                                                timeMinute,
+                                                true // 24h format
+                                            ).show()
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                                        modifier = Modifier.height(36.dp)
+                                    ) {
+                                        Text(text = String.format("%02d:%02d", timeHour, timeMinute), color = customColors.neonCyan)
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.height(12.dp))
                             SettingsItemCard { SwitchRow("Prekoračenje roka", notifyOverdue, { viewModel.toggleNotifyOverdue(it) }, color = customColors.error) }
                             Spacer(Modifier.height(12.dp))
                             SettingsItemCard { SwitchRow("Potencijalni Duplikati", notifyDup, { viewModel.toggleNotifyDuplicate(it) }, color = customColors.error) }
+                            Spacer(Modifier.height(12.dp))
+                            // Support moved to bottom
+                            SettingsItemCard {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(min = 48.dp) // Match height of Switch rows
+                                        .clickable { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("mailto:aidevthings@gmail.com"))) },
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("Podrška i Pomoć", color = MaterialTheme.colorScheme.onSurface, fontSize = 19.sp, fontWeight = FontWeight.SemiBold)
+                                    Icon(imageVector = Icons.Filled.Info, contentDescription = null, tint = customColors.neonCyan)
+                                }
+                            }
                         }
                     }
                     
-                    // Background Sync (Battery)
-                    item {
-                        val isIgnoringBattery by viewModel.isIgnoringBatteryOptimizations.collectAsState()
-                        var expanded by remember { mutableStateOf(!isIgnoringBattery) } // Auto expand if issue
 
-                        SettingsDropdown(
-                            title = "Pozadinska Sinhro",
-                            icon = Icons.Filled.Sync,
-                            titleFontSize = 16.sp, // Requested smaller font
-                            expanded = expanded,
-                            onToggle = { expanded = !expanded }
-                        ) {
-                           if (!isIgnoringBattery) {
-                               SettingsItemCard {
-                                   Column {
-                                       Text(
-                                           "Za pouzdanu sinhronizaciju, isključite optimizaciju baterije.",
-                                           color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                           fontSize = 16.sp,
-                                           fontWeight = FontWeight.Bold,
-                                           modifier = Modifier.padding(bottom = 12.dp)
-                                       )
-                                       Button(
-                                           onClick = {
-                                               try {
-                                                    context.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
-                                               } catch(e: Exception) {}
-                                           },
-                                           colors = ButtonDefaults.buttonColors(containerColor = customColors.error),
-                                           modifier = Modifier.fillMaxWidth(),
-                                           shape = RoundedCornerShape(8.dp)
-                                       ) {
-                                           Text("Reši Problem (Baterija)", color = customColors.onError, fontWeight = FontWeight.Bold)
-                                       }
-                                   }
-                               }
-                           } else {
-                               SettingsItemCard {
-                                   Row(verticalAlignment = Alignment.CenterVertically) {
-                                       Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = customColors.success)
-                                       Spacer(Modifier.width(8.dp))
-                                       Text("Status: Optimizovano (Spremno)", color = customColors.success, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                                   }
-                               }
-                           }
-                        }
-                    }
 
                     // --- SECTION: SISTEM ---
                     item {
@@ -431,8 +465,42 @@ fun SettingsScreen(
                             title = "Upravljanje Podacima",
                             icon = Icons.Filled.Storage,
                             expanded = expanded,
-                            onToggle = { expanded = !expanded }
+                            onToggle = { 
+                                viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
+                                expanded = !expanded 
+                            }
                         ) {
+                            // Info text explaining where files are saved
+                            Card(
+                                colors = CardDefaults.cardColors(
+                                    containerColor = customColors.neonCyan.copy(alpha = 0.1f)
+                                ),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.Top
+                                ) {
+                                    Icon(
+                                        Icons.Filled.Info,
+                                        contentDescription = null,
+                                        tint = customColors.neonCyan,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        text = "Kada izvezete fajl, otvoriće se meni za deljenje. " +
+                                               "Izaberite 'Sačuvaj u Fajlove' da sačuvate u Downloads folder, " +
+                                               "ili podelite putem Email-a, Google Drive-a, itd.",
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontSize = 13.sp,
+                                        lineHeight = 18.sp
+                                    )
+                                }
+                            }
+                            
+                            Spacer(Modifier.height(12.dp))
+                            
                             SettingsItemCard {
                                 Row(
                                     modifier = Modifier.fillMaxWidth().clickable { viewModel.exportCsv(context) },
@@ -504,13 +572,16 @@ fun SettingsScreen(
                         Spacer(Modifier.height(12.dp))
 
                         SettingsDropdown(
-                            title = "Prijavi Grešku",
+                            title = "Prijavi Grešku ili Sugestiju",
                             icon = Icons.Filled.BugReport,
                             expanded = expanded,
-                            onToggle = { expanded = !expanded }
+                            onToggle = { 
+                                viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
+                                expanded = !expanded 
+                            }
                         ) {
                             Text(
-                                text = "Opišite problem koji ste primetili:",
+                                text = "Opišite grešku ili pošaljite sugestiju:",
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontSize = 18.sp
                             )
@@ -537,8 +608,9 @@ fun SettingsScreen(
                             Button(
                                 onClick = { 
                                     if (messageText.isNotBlank()) {
-                                        viewModel.sendBugReport(context, messageText)
+                                        viewModel.sendBugReport(messageText)
                                         messageText = "" // Clear field
+                                        expanded = false // Auto-close dropdown
                                     } else {
                                         Toast.makeText(context, "Unesite opis problema.", Toast.LENGTH_SHORT).show()
                                     }
@@ -563,7 +635,11 @@ fun SettingsScreen(
                         ) {
                             // Sync Now Button
                             OutlinedButton(
-                                onClick = { viewModel.syncNow(); Toast.makeText(context, "Sinhronizacija pokrenuta...", Toast.LENGTH_SHORT).show() },
+                                onClick = { 
+                                    viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
+                                    viewModel.syncNow()
+                                    Toast.makeText(context, "Sinhronizacija pokrenuta...", Toast.LENGTH_SHORT).show() 
+                                },
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(50.dp),
@@ -586,34 +662,103 @@ fun SettingsScreen(
                                     )
                                 )
                             }
-
-                            // Reset Sync Button
-                            OutlinedButton(
-                                onClick = {
-                                    viewModel.resetGmailSync() 
-                                    // ViewModel shows snackbar
+                            
+                            // ========== HARD RESET SECTION ==========
+                            Spacer(modifier = Modifier.height(32.dp))
+                            
+                            Text(
+                                text = "⚠️ HARD RESET (Testing Only)",
+                                style = TextStyle(
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = customColors.error
+                                )
+                            )
+                            
+                            Spacer(modifier = Modifier.height(8.dp))
+                            
+                            val hardResetMsg by viewModel.hardResetResult.collectAsState()
+                            val isResetting by viewModel.isResetting.collectAsState()
+                            var showConfirmDialog by remember { mutableStateOf(false) }
+                            
+                            Button(
+                                onClick = { 
+                                    viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.ERROR)
+                                    showConfirmDialog = true
                                 },
+                                enabled = !isResetting,
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(50.dp),
                                 shape = RoundedCornerShape(12.dp),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, customColors.error.copy(alpha = 0.7f)),
-                                colors = ButtonDefaults.outlinedButtonColors(
-                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                    contentColor = customColors.error.copy(alpha = 0.9f)
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFF8B0000) // Dark Red
                                 )
                             ) {
-                                Icon(Icons.Filled.Restore, contentDescription = null, tint = customColors.error.copy(alpha = 0.9f))
-                                Spacer(Modifier.width(8.dp))
-                                Text(
-                                    text = "Reset Gmail Sync",
-                                    style = TextStyle(
-                                        fontFamily = ReadableFont,
-                                        fontSize = 16.sp,
-                                        fontWeight = FontWeight.Bold
+                                if (isResetting) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(20.dp),
+                                        color = Color.White,
+                                        strokeWidth = 2.dp
                                     )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Resetovanje...", color = Color.White)
+                                } else {
+                                    Text("🔥 HARD RESET - Obriši Sve", color = Color.White, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            
+                            if (showConfirmDialog) {
+                                AlertDialog(
+                                    onDismissRequest = { showConfirmDialog = false },
+                                    title = { Text("⚠️ Potvrdi Hard Reset", color = customColors.error) },
+                                    text = { 
+                                        Text(
+                                            "Ovo će TRAJNO obrisati:\n\n" +
+                                            "• Sve lokalne račune\n" +
+                                            "• Sve EPS podatke\n" +
+                                            "• Sve plaćene statuse u Firestore\n" +
+                                            "• Sve sync timestamps\n\n" +
+                                            "Da li ste sigurni?",
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    },
+                                    confirmButton = {
+                                        Button(
+                                            onClick = {
+                                                showConfirmDialog = false
+                                                viewModel.hardReset()
+                                            },
+                                            colors = ButtonDefaults.buttonColors(containerColor = customColors.error)
+                                        ) {
+                                            Text("DA, OBRIŠI SVE", color = Color.White)
+                                        }
+                                    },
+                                    dismissButton = {
+                                        TextButton(onClick = { showConfirmDialog = false }) {
+                                            Text("Odustani", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                    },
+                                    containerColor = MaterialTheme.colorScheme.surface
                                 )
                             }
+                            
+                            if (hardResetMsg != null) {
+                                Card(
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                                ) {
+                                    Text(
+                                        text = hardResetMsg!!,
+                                        color = if (hardResetMsg!!.startsWith("✅")) customColors.success 
+                                               else if (hardResetMsg!!.startsWith("❌")) customColors.error 
+                                               else customColors.neonCyan,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        modifier = Modifier.padding(12.dp)
+                                    )
+                                }
+                            }
+
                         }
                     }
 
@@ -646,7 +791,13 @@ fun TopBar(onBackClick: () -> Unit, title: String) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         IconButton(
-            onClick = onBackClick,
+            onClick = {
+                // Haptic feedback logic not available here directly, but we can assume parent handles it or ignore for back button if standard pattern.
+                // Actually, let's inject a vibrate call if we have viewModel access. But TopBar doesn't have viewModel.
+                // Best to rely on onBackClick caller to vibrate or just skip. 
+                // Let's modify onBackClick lambda in SettingsScreen to include vibrate
+                onBackClick()
+            },
             modifier = Modifier.shadow(4.dp, shape = androidx.compose.foundation.shape.CircleShape, spotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
         ) {
             Icon(Icons.Filled.ArrowBack, contentDescription = "Nazad", tint = MaterialTheme.colorScheme.onBackground)
@@ -771,7 +922,12 @@ fun SettingsDropdown(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { onToggle() }
+                .clickable { 
+                    // No viewModel here. We need to pass vibrate logic or ignore. 
+                    // Wait, SettingsDropdown is reusable.
+                    // We should add this logic to onToggle lambda in SettingsScreen.
+                    onToggle() 
+                }
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {

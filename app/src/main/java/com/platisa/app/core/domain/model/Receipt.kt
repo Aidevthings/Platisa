@@ -11,6 +11,9 @@ data class Receipt(
     val totalAmount: BigDecimal,
     val currency: String = "RSD",
     val imagePath: String,
+    // Smart Parsing Fields
+    val currentMonthAmount: BigDecimal? = null,
+    val previousDebtAmount: BigDecimal? = null,
     val qrCodeData: String? = null,
     val invoiceNumber: String? = null,
     
@@ -31,7 +34,9 @@ data class Receipt(
     val updatedAt: Date = Date(),
     val savedQrUri: String? = null,
     val recipientName: String? = null,
-    val recipientAddress: String? = null
+    val recipientAddress: String? = null,
+    val payerName: String? = null,
+    val payerAddress: String? = null
 ) {
     val category: BillCategory
         get() = BillCategorizer.categorize(merchantName)

@@ -319,7 +319,7 @@ fun MonthlySpendingSection(
     val isDark = LocalPlatisaColors.current.isDark
 
     val mainTextColor = if (isDark) Color.White else LightStatsTextMain
-    val labelTextColor = if (isDark) Color.Gray else LightStatsTextMuted
+    val labelTextColor = if (isDark) Color(0xFFE0E0E0) else LightStatsTextMuted
     val primaryColor = if (isDark) CyberPrimary else LightStatsPrimary
 
     val (titleText, titleSize) = when (selectedperiod) {
@@ -358,7 +358,10 @@ fun MonthlySpendingSection(
                     fontWeight = FontWeight.Bold,
                     color = mainTextColor,
                     fontFamily = androidx.compose.ui.text.font.FontFamily.Default,
-                    modifier = if (isDark) Modifier.shadow(12.dp, RoundedCornerShape(8.dp), ambientColor = CyberPrimary, spotColor = CyberPrimary) else Modifier
+                    shadow = if (isDark) androidx.compose.ui.graphics.Shadow(
+                        color = CyberPrimary, 
+                        blurRadius = 40f 
+                    ) else null
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 
@@ -437,7 +440,7 @@ fun BillStatusGrid(paymentStats: PaymentStats) {
     val isDark = LocalPlatisaColors.current.isDark
 
     val mainTextColor = if (isDark) Color.White else LightStatsTextMain
-    val labelTextColor = if (isDark) Color.Gray else LightStatsTextMuted
+    val labelTextColor = if (isDark) Color(0xFFE0E0E0) else LightStatsTextMuted
     val primaryColor = if (isDark) CyberPrimary else LightStatsPrimary
     val secondaryColor = if (isDark) CyberSecondary else LightStatsSecondary
 
@@ -544,7 +547,7 @@ fun SpendingTrendsChartV2(
     val isDark = LocalPlatisaColors.current.isDark
 
     val mainTextColor = if (isDark) Color.White else LightStatsTextMain
-    val labelTextColor = if (isDark) Color.Gray else LightStatsTextMuted
+    val labelTextColor = if (isDark) Color(0xFFE0E0E0) else LightStatsTextMuted
     val primaryColor = if (isDark) CyberPrimary else LightStatsPrimary
     val secondaryColor = if (isDark) CyberSecondary else LightStatsSecondary
 
@@ -583,7 +586,10 @@ fun SpendingTrendsChartV2(
                                 else if (isDark) Color.White.copy(alpha = 0.05f) 
                                 else Color.Black.copy(alpha = 0.05f)
                             )
-                            .clickable { chartType = ChartType.LINE }
+                            .clickable { 
+                                chartType = ChartType.LINE 
+                                viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
+                            }
                             .padding(8.dp)
                     ) {
                         Icon(
@@ -603,7 +609,10 @@ fun SpendingTrendsChartV2(
                                 else if (isDark) Color.White.copy(alpha = 0.05f) 
                                 else Color.Black.copy(alpha = 0.05f)
                             )
-                            .clickable { chartType = ChartType.BAR }
+                            .clickable { 
+                                chartType = ChartType.BAR 
+                                viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
+                            }
                             .padding(8.dp)
                     ) {
                         Icon(
@@ -625,22 +634,57 @@ fun SpendingTrendsChartV2(
                 } else {
                     val points = trends.map { it.second }
                     val maxDataValue = points.maxOrNull() ?: 1f
-                    // Round up max value for nicer scaling (e.g. 135 -> 140 or 150)
-                    val maxValue = if (maxDataValue == 0f) 100f else maxDataValue * 1.1f
+                    
+                    // Nice Number Algorithm for Y-Axis
+                    val steps = 3 // We want 3 grid lines (plus zero)
+                    
+                    // 1. Calculate rough range
+                    // 2. Find magnitude (power of 10)
+                    // 3. Round to nice interval (1, 2, 5, 10)
+                    
+                    fun calculateNiceStep(range: Float, count: Int): Float {
+                        val roughStep = range / count
+                        // Use java.lang.Math for reliable Double operations
+                        val magnitude = java.lang.Math.pow(10.0, java.lang.Math.floor(java.lang.Math.log10(roughStep.toDouble()))).toFloat()
+                        val normalizedStep = roughStep / magnitude
+                        
+                        val niceStep = when {
+                            normalizedStep <= 1.0f -> 1.0f
+                            normalizedStep <= 1.25f -> 1.25f // e.g. 125, 1250
+                            normalizedStep <= 1.5f -> 1.5f   // e.g. 150, 1500
+                            normalizedStep <= 2.0f -> 2.0f   // e.g. 200, 2000
+                            normalizedStep <= 2.5f -> 2.5f   // e.g. 250, 2500
+                            normalizedStep <= 3.0f -> 3.0f   // e.g. 300, 3000
+                            normalizedStep <= 4.0f -> 4.0f   // e.g. 400, 4000
+                            normalizedStep <= 5.0f -> 5.0f   // e.g. 500, 5000
+                            normalizedStep <= 6.0f -> 6.0f   // e.g. 600, 6000
+                            normalizedStep <= 8.0f -> 8.0f   // e.g. 800, 8000
+                            else -> 10.0f
+                        }
+                        return niceStep * magnitude
+                    }
+
+                    // Ensure we have enough headroom but don't force a jump to next magnitude
+                    // Use minimal buffer (0.1%) just to avoid float rounding making us equal to exactly the step threshold if raw data is perfect
+                    val targetMax = if (maxDataValue == 0f) 100f else maxDataValue * 1.001f
+                    val stepSize = calculateNiceStep(targetMax, steps)
+                    
+                    // Recalculate max value to be an exact multiple of stepSize
+                    val maxValue = stepSize * steps
                     
                     Canvas(modifier = Modifier.fillMaxSize()) {
                         val width = size.width
                         val height = size.height
-                        val chartHeight = height * 0.85f // Leave space for X axis labels if drawn in canvas, or just padding
-                        val chartWidth = width * 0.85f // Leave space for Y axis labels
+                        // Use full height - X labels are external
+                        val chartHeight = height 
+                        val chartWidth = width
                         val yAxisLabelWidth = width * 0.15f
                         
-                        // Divide into 4 horizontal lines (0%, 33%, 66%, 100%)
-                        val steps = 3
+                        // val steps is already defined as 3
                         val stepHeight = chartHeight / steps
                         
                         val textPaint = android.graphics.Paint().apply {
-                            color = android.graphics.Color.GRAY // Keep gray for labels, or conform to theme if needed, but standard gray is usually fine
+                            color = if (isDark) Color(0xFFE0E0E0).toArgb() else android.graphics.Color.GRAY 
                             textSize = 30f
                             textAlign = android.graphics.Paint.Align.RIGHT
                         }
@@ -648,7 +692,7 @@ fun SpendingTrendsChartV2(
                         // Draw Grid & Y-Labels
                         for (i in 0..steps) {
                             val y = chartHeight - (i * stepHeight)
-                            val value = (maxValue / steps) * i
+                            val value = stepSize * i
                             
                             // Grid Line
                             drawLine(
@@ -795,7 +839,7 @@ fun CategoryPieChart(spendingByCategory: Map<BillCategory, BigDecimal>, totalSpe
     val isDark = LocalPlatisaColors.current.isDark
 
     val mainTextColor = if (isDark) Color.White else LightStatsTextMain
-    val labelTextColor = if (isDark) Color.Gray else LightStatsTextMuted
+    val labelTextColor = if (isDark) Color(0xFFE0E0E0) else LightStatsTextMuted
     
 
 
@@ -942,7 +986,8 @@ fun CategoryPieChart(spendingByCategory: Map<BillCategory, BigDecimal>, totalSpe
                                   Spacer(modifier = Modifier.width(8.dp))
                                   Text(
                                     text = cat.displayName,
-                                    color = if (isDark) Color(0xFFCCCCCC) else LightStatsTextMuted, fontSize = 16.sp
+                                    color = if (isDark) Color(0xFFE0E0E0) else LightStatsTextMuted, fontSize = 16.sp,
+                                    fontWeight = FontWeight.Medium
                                   )
                               }
                               Text(
@@ -975,7 +1020,7 @@ fun CategoryDetailsSection(categoryDetails: List<CategoryDetailedStats>) {
         )
 
         if (categoryDetails.isEmpty()) {
-            Text("Nema podataka", color = if (isDark) Color.Gray else LightStatsTextMuted)
+            Text("Nema podataka", color = if (isDark) Color(0xFFE0E0E0) else LightStatsTextMuted)
         } else {
             categoryDetails.forEach { stats ->
                 CategoryDetailCard(stats, isDark, mainTextColor)
@@ -1051,7 +1096,7 @@ fun CategoryDetailCard(stats: CategoryDetailedStats, isDark: Boolean, mainTextCo
                      Text(
                         text = "${stats.count} Transakcija", // "Trips" -> Transakcija/Poseta
                         fontSize = 13.sp,
-                        color = if (isDark) Color.Gray else LightStatsTextMuted
+                        color = if (isDark) Color(0xFFE0E0E0) else LightStatsTextMuted
                     )
                 }
                 
@@ -1068,7 +1113,7 @@ fun CategoryDetailCard(stats: CategoryDetailedStats, isDark: Boolean, mainTextCo
                     Icon(
                         imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
                         contentDescription = null,
-                        tint = if (isDark) Color.Gray else LightStatsTextMuted,
+                        tint = if (isDark) Color(0xFFE0E0E0) else LightStatsTextMuted,
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -1081,7 +1126,7 @@ fun CategoryDetailCard(stats: CategoryDetailedStats, isDark: Boolean, mainTextCo
                     Spacer(modifier = Modifier.height(12.dp))
                     
                     if (stats.merchantBreakdown.isEmpty()) {
-                         Text("Nema detalja o prodavnicama", fontSize = 13.sp, color = if (isDark) Color.Gray else LightStatsTextMuted)
+                         Text("Nema detalja o prodavnicama", fontSize = 13.sp, color = if (isDark) Color(0xFFE0E0E0) else LightStatsTextMuted)
                     } else {
                         stats.merchantBreakdown.forEach { (merchant, amount) ->
                             Row(

@@ -70,7 +70,9 @@ class BillDetailsScreenTest {
                     receiptItems = emptyList(),
                     onSaveQr = {},
                     onMarkPaid = {},
-                    isSaving = false
+                    isSaving = false,
+                    isLatestForMerchant = true,
+                    vibrate = {}
                 )
             }
         }
@@ -97,7 +99,9 @@ class BillDetailsScreenTest {
                     receiptItems = emptyList(),
                     onSaveQr = {},
                     onMarkPaid = {},
-                    isSaving = false
+                    isSaving = false,
+                    isLatestForMerchant = true,
+                    vibrate = {}
                 )
             }
         }
@@ -125,7 +129,9 @@ class BillDetailsScreenTest {
                     receiptItems = emptyList(),
                     onSaveQr = {},
                     onMarkPaid = {},
-                    isSaving = false
+                    isSaving = false,
+                    isLatestForMerchant = true,
+                    vibrate = {}
                 )
             }
         }
@@ -157,7 +163,9 @@ class BillDetailsScreenTest {
                     receiptItems = emptyList(),
                     onSaveQr = {},
                     onMarkPaid = {},
-                    isSaving = false
+                    isSaving = false,
+                    isLatestForMerchant = true,
+                    vibrate = {}
                 )
             }
         }
@@ -185,7 +193,9 @@ class BillDetailsScreenTest {
                     receiptItems = emptyList(),
                     onSaveQr = {},
                     onMarkPaid = {},
-                    isSaving = false
+                    isSaving = false,
+                    isLatestForMerchant = true,
+                    vibrate = {}
                 )
             }
         }
@@ -212,7 +222,9 @@ class BillDetailsScreenTest {
                     receiptItems = emptyList(),
                     onSaveQr = {},
                     onMarkPaid = {},
-                    isSaving = false
+                    isSaving = false,
+                    isLatestForMerchant = true,
+                    vibrate = {}
                 )
             }
         }

@@ -7,9 +7,9 @@ import androidx.lifecycle.viewModelScope
 import com.platisa.app.core.common.BaseViewModel
 import com.platisa.app.core.common.OcrManager
 import com.platisa.app.core.domain.parser.AutoTagger
-import com.platisa.app.core.domain.parser.EpsParser
 import com.platisa.app.core.domain.parser.ParsedReceipt
 import com.platisa.app.core.domain.parser.ReceiptParser
+import com.platisa.app.core.data.parser.EpsParser
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,8 +27,13 @@ import java.util.Date
 class ReviewReceiptViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     @ApplicationContext private val context: Context,
-    private val repository: ReceiptRepository
+    private val repository: ReceiptRepository,
+    private val vibrationHelper: com.platisa.app.core.common.VibrationHelper
 ) : BaseViewModel() {
+
+    fun vibrate(type: com.platisa.app.core.common.VibrationHelper.HapticType) {
+        vibrationHelper.vibrate(type)
+    }
 
     private val imageUriString: String = checkNotNull(savedStateHandle["imageUri"])
     val imageUri: Uri = if (imageUriString.startsWith("/")) {
@@ -289,6 +294,9 @@ class ReviewReceiptViewModel @Inject constructor(
                 Date()
             }
             
+            val parsed = _parsedReceipt.value
+            val eps = _epsData.value
+
             if (existingReceiptId != 0L) {
                 // Update existing receipt
                 val existingReceipt = repository.getReceiptById(existingReceiptId)
@@ -297,8 +305,13 @@ class ReviewReceiptViewModel @Inject constructor(
                         merchantName = merchant,
                         totalAmount = amount,
                         date = date,
-                        dueDate = _parsedReceipt.value?.dueDate ?: it.dueDate,
-                        qrCodeData = _parsedReceipt.value?.qrCodeData
+                        dueDate = parsed?.dueDate ?: it.dueDate,
+                        qrCodeData = parsed?.qrCodeData,
+                        // Update recipient/payer info if it was missing or if we found better data
+                        recipientName = eps?.recipientName ?: parsed?.recipientName ?: it.recipientName,
+                        recipientAddress = eps?.recipientAddress ?: parsed?.recipientAddress ?: it.recipientAddress,
+                        payerName = parsed?.payerName ?: it.payerName,
+                        payerAddress = parsed?.payerAddress ?: it.payerAddress
                     )
                     repository.updateReceipt(updatedReceipt)
                 }
@@ -309,14 +322,19 @@ class ReviewReceiptViewModel @Inject constructor(
                     merchantName = merchant,
                     totalAmount = amount,
                     date = date,
-                    dueDate = _parsedReceipt.value?.dueDate, // Save parsed Due Date
+                    dueDate = parsed?.dueDate, 
                     imagePath = imageUriString,
-                    qrCodeData = _parsedReceipt.value?.qrCodeData,
+                    qrCodeData = parsed?.qrCodeData,
                     invoiceNumber = invoiceNumber,
                     savedQrUri = lastSavedQrUri,
-                    paymentStatus = if (lastSavedQrUri != null) com.platisa.app.core.domain.model.PaymentStatus.PROCESSING else com.platisa.app.core.domain.model.PaymentStatus.UNPAID
+                    paymentStatus = if (lastSavedQrUri != null) com.platisa.app.core.domain.model.PaymentStatus.PROCESSING else com.platisa.app.core.domain.model.PaymentStatus.UNPAID,
+                    // CRITICAL: Save recipient and payer info!
+                    recipientName = eps?.recipientName ?: parsed?.recipientName,
+                    recipientAddress = eps?.recipientAddress ?: parsed?.recipientAddress,
+                    payerName = parsed?.payerName,
+                    payerAddress = parsed?.payerAddress
                 )
-                val receiptId = repository.insertReceipt(receipt, _epsData.value?.billingPeriod)
+                val receiptId = repository.insertReceipt(receipt, eps?.billingPeriod)
                 android.util.Log.d("ReviewVM", "✅ Receipt saved successfully! ID: $receiptId, Invoice: $invoiceNumber")
 
                 // Save EPS data for new receipts - use cached data which has Gemini's recipient info

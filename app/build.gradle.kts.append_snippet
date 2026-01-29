@@ -1,0 +1,6 @@
+
+// Disable reports to avoid "Type T not present" error in Gradle 8.13
+tasks.withType(Test::class) {
+    reports.html.required.set(false)
+    reports.junitXml.required.set(false)
+}

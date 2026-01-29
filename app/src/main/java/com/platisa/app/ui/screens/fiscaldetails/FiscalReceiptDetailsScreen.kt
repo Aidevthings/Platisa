@@ -45,6 +45,8 @@ fun FiscalReceiptDetailsScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val items by viewModel.items.collectAsState()
+    val currency by viewModel.currency.collectAsState()
+    val conversionRate by viewModel.conversionRate.collectAsState()
     
     LaunchedEffect(receiptId) {
         viewModel.loadReceipt(receiptId)
@@ -73,7 +75,10 @@ fun FiscalReceiptDetailsScreen(
                 ) {
                     Text("Greška", color = NeonMagenta, fontSize = 20.sp)
                     Text(currentState.message, color = Color.White)
-                    Button(onClick = { navController.popBackStack() }) {
+                    Button(onClick = { 
+                        viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
+                        navController.popBackStack() 
+                    }) {
                         Text("Nazad")
                     }
                 }
@@ -82,7 +87,13 @@ fun FiscalReceiptDetailsScreen(
                 FiscalReceiptContent(
                     navController = navController,
                     receipt = currentState.receipt,
-                    items = items
+                    items = items,
+                    currency = currency,
+                    conversionRate = conversionRate,
+                    onBack = {
+                        viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
+                        navController.popBackStack()
+                    }
                 )
             }
         }
@@ -93,7 +104,10 @@ fun FiscalReceiptDetailsScreen(
 fun FiscalReceiptContent(
     navController: NavController,
     receipt: Receipt,
-    items: List<ReceiptItem>
+    items: List<ReceiptItem>,
+    currency: String,
+    conversionRate: java.math.BigDecimal,
+    onBack: () -> Unit = { navController.popBackStack() }
 ) {
     val dateFormat = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale("sr", "RS"))
     
@@ -137,7 +151,7 @@ fun FiscalReceiptContent(
                         .clip(CircleShape)
                         .background(backButtonBg)
                         .border(1.dp, backButtonBorder, CircleShape)
-                        .clickable { navController.popBackStack() },
+                        .clickable { onBack() },
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -258,8 +272,18 @@ fun FiscalReceiptContent(
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold
                         )
+                        
+                        val displayedTotal = if (currency == "EUR" && receipt.totalAmount != null) {
+                            val msg = "€" + java.text.DecimalFormat("#,##0.00").format(
+                                receipt.totalAmount.divide(conversionRate, 2, java.math.RoundingMode.HALF_UP)
+                            )
+                            msg
+                        } else {
+                            com.platisa.app.core.common.Formatters.formatCurrency(receipt.totalAmount)
+                        }
+
                         Text(
-                            com.platisa.app.core.common.Formatters.formatCurrency(receipt.totalAmount),
+                            displayedTotal,
                             color = totalValueColor,
                             fontSize = 24.sp,
                             fontWeight = FontWeight.Bold
@@ -340,7 +364,9 @@ fun FiscalReceiptContent(
                 textColor = mainTextColor,
                 secondaryColor = secondaryTextColor,
                 accentColor = totalValueColor,
-                dividerColor = dividerColor
+                dividerColor = dividerColor,
+                currency = currency,
+                conversionRate = conversionRate
             )
         }
         
@@ -359,7 +385,9 @@ fun ItemRow(
     textColor: Color,
     secondaryColor: Color,
     accentColor: Color,
-    dividerColor: Color
+    dividerColor: Color,
+    currency: String,
+    conversionRate: java.math.BigDecimal
 ) {
     Row(
         modifier = Modifier
@@ -408,8 +436,13 @@ fun ItemRow(
         val totalInt = item.total?.toInt() ?: 0
         // Use standard number format for thousands separator if desired, or just raw string if simpler.
         // Serbian locale usually uses dots for thousands.
-        val formattedTotal = java.text.NumberFormat.getIntegerInstance(java.util.Locale("sr", "RS")).format(totalInt)
-        
+        val formattedTotal = if (currency == "EUR" && item.total != null) {
+             val itemTotal = item.total.divide(conversionRate, 2, java.math.RoundingMode.HALF_UP)
+             "€" + java.text.DecimalFormat("#,##0.00").format(itemTotal)
+        } else {
+             java.text.NumberFormat.getIntegerInstance(java.util.Locale("sr", "RS")).format(totalInt)
+        }
+
         Text(
             if (item.total != null) formattedTotal else "-",
             color = accentColor,

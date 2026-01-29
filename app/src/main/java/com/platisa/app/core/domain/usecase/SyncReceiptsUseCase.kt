@@ -35,7 +35,8 @@ class SyncReceiptsUseCase @Inject constructor(
     @ApplicationContext private val context: Context,
     private val gmailRepository: GmailRepository,
     private val receiptRepository: ReceiptRepository,
-    private val secureStorage: com.platisa.app.core.domain.SecureStorage
+    private val secureStorage: com.platisa.app.core.domain.SecureStorage,
+    private val firestoreRepository: com.platisa.app.core.data.repository.FirestoreRepository
 ) {
 
     suspend operator fun invoke(forceResync: Boolean = false, lookbackDays: Int? = null): SyncStats {
@@ -120,6 +121,38 @@ class SyncReceiptsUseCase @Inject constructor(
         }
 
         android.util.Log.d("SyncReceiptsUseCase", "Fetched ${files.size} files from ${account.email}")
+        
+        // ☁️ UNIVERSAL SHARING: Get paid receipts from ALL relevant sources
+        // 1. The account we are currently syncing (account.email) - CRITICAL for shared bills
+        // 2. The main logged-in user (currentUserEmail) - Fallback for manual/legacy
+        // 3. Any other connected accounts if needed (though typically we process one account at a time here)
+        
+        val sourcesToCheck = mutableSetOf<String>()
+        account.email?.let { sourcesToCheck.add(it.lowercase()) }
+        com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.email?.let { sourcesToCheck.add(it.lowercase()) }
+        
+        android.util.Log.d("SyncReceiptsUseCase", "🔑 SOURCES TO CHECK FOR PAID STATUS: $sourcesToCheck")
+        
+        val paidIds = try {
+            kotlinx.coroutines.withTimeout(8000) { // Increased timeout for multi-fetch
+                val deferreds = sourcesToCheck.map { sourceEmail ->
+                    async { 
+                        android.util.Log.d("SyncReceiptsUseCase", "☁️ Fetching shared status from: $sourceEmail")
+                        firestoreRepository.getPaidReceiptIdentifiers(sourceEmail) 
+                    }
+                }
+                deferreds.awaitAll().flatten()
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("SyncReceiptsUseCase", "Failed to fetch shared paid status (Timeout/Error)", e)
+            emptyList()
+        }
+        val paidIdsSet = paidIds.toSet() // Optimize for O(1) lookups
+        
+        android.util.Log.d("SyncReceiptsUseCase", "📊 TOTAL PAID IDs from cloud: ${paidIdsSet.size}")
+        if (paidIdsSet.isNotEmpty()) {
+            android.util.Log.d("SyncReceiptsUseCase", "   Sample: ${paidIdsSet.take(3)}")
+        }
 
         // Process downloaded files in parallel
         // Process downloaded files SEQUENTIALLY to avoid OOM
@@ -131,7 +164,7 @@ class SyncReceiptsUseCase @Inject constructor(
             try {
                 // Ensure garbage collection has a chance to run between heavy files
                 // System.gc() // Optional: Hint to GC if memory is very tight
-                processFile(file, account.email ?: "unknown", parsedCount, duplicatesBlocked, receiptRepository, context)
+                processFile(file, account.email ?: "unknown", parsedCount, duplicatesBlocked, receiptRepository, context, paidIdsSet)
             } catch (e: Exception) {
                  android.util.Log.e("SyncReceiptsUseCase", "Error processing ${file.name}", e)
                  errorList.add("Error: ${file.name} - ${e.message}")
@@ -152,17 +185,40 @@ class SyncReceiptsUseCase @Inject constructor(
         parsedCount: java.util.concurrent.atomic.AtomicInteger,
         duplicatesBlocked: java.util.concurrent.atomic.AtomicInteger,
         repo: ReceiptRepository,
-        ctx: Context
+        ctx: Context,
+        paidIds: Set<String>
     ) {
         android.util.Log.d("SyncReceiptsUseCase", "Processing file: ${file.name}")
         
         // Extract unique ID from filename (format: gmail_messageId_filename)
         val externalId = file.name.removePrefix("gmail_")
         
+        // 🔍 DEBUG: Log what we're looking for
+        android.util.Log.d("SyncReceiptsUseCase", "🔍 ========== CHECKING PAID STATUS ==========")
+        android.util.Log.d("SyncReceiptsUseCase", "🔍 File: ${file.name}")
+        android.util.Log.d("SyncReceiptsUseCase", "🔍 External ID: $externalId")
+        android.util.Log.d("SyncReceiptsUseCase", "🔍 Total paid IDs in set: ${paidIds.size}")
+        android.util.Log.d("SyncReceiptsUseCase", "🔍 Is this ID in paidIds? ${paidIds.contains(externalId)}")
+        if (paidIds.isNotEmpty()) {
+            android.util.Log.d("SyncReceiptsUseCase", "🔍 Sample paid IDs: ${paidIds.take(3)}")
+        }
+        
         // Check if this Gmail attachment was already processed
         val existingReceipt = repo.getReceiptByExternalId(externalId)
         if (existingReceipt != null) {
+            android.util.Log.d("SyncReceiptsUseCase", "🔍 Found existing receipt: ID=${existingReceipt.id}, Status=${existingReceipt.paymentStatus}")
+            // Check if local status needs update from Firestore (Cloud says PAID, local says UNPAID)
+            if (paidIds.contains(externalId) && existingReceipt.paymentStatus != com.platisa.app.core.domain.model.PaymentStatus.PAID) {
+                 android.util.Log.d("SyncReceiptsUseCase", "🔄 Updating existing receipt to PAID based on Firestore: $externalId")
+                 val updated = existingReceipt.copy(
+                     paymentStatus = com.platisa.app.core.domain.model.PaymentStatus.PAID,
+                     updatedAt = Date(),
+                     metadata = (existingReceipt.metadata ?: "") + " [Cloud Sync]"
+                 )
+                 repo.updateReceipt(updated)
+            }
             android.util.Log.w("SyncReceiptsUseCase", "⏭️ SKIPPING: External ID already processed: $externalId")
+            android.util.Log.d("SyncReceiptsUseCase", "🔍 =============================================")
             return
         }
         
@@ -242,9 +298,24 @@ class SyncReceiptsUseCase @Inject constructor(
             
             val finalRecipientAddress = epsData.recipientAddress ?: parsed.recipientAddress
 
-            // Priority: QR amount > EPS amount > Receipt parser amount
-            val totalAmount = qrAmount ?: epsData.totalConsumption ?: parsed.totalAmount ?: BigDecimal.ZERO
+            // Priority: QR amount (if no debt) > EPS Current Monthly Charge > EPS amount > Receipt parser amount
+            // SMART PARSING FIX: Prioritize 'currentMonthAmount' for Statistics accuracy
+            val smartAmount = epsData.currentMonthAmount
+            val totalAmount = if (smartAmount != null && smartAmount > BigDecimal.ZERO) {
+                android.util.Log.d("SyncReceiptsUseCase", "💡 USING SMART PARSING AMOUNT: $smartAmount (Original Total: ${epsData.totalConsumption ?: parsed.totalAmount})")
+                smartAmount
+            } else {
+                qrAmount ?: epsData.totalConsumption ?: parsed.totalAmount ?: BigDecimal.ZERO
+            }
             val finalMerchant = merchantName ?: parsed.merchantName ?: "Unknown"
+            
+            // Check if PAID in Firestore
+            val initialStatus = if (paidIds.contains(externalId)) {
+                android.util.Log.d("SyncReceiptsUseCase", "☁️ CLOUD SYNC: Marking as PAID based on Firestore")
+                com.platisa.app.core.domain.model.PaymentStatus.PAID
+            } else {
+                com.platisa.app.core.domain.model.PaymentStatus.UNPAID
+            }
             
             // Create receipt with Payment ID fields AND externalId
             val receipt = Receipt(
@@ -260,10 +331,14 @@ class SyncReceiptsUseCase @Inject constructor(
                 paymentId = epsData.paymentId,
                 isStorno = epsData.isStorno,
                 isVisible = !epsData.isStorno,
-                originalSource = "GMAIL($accountEmail)", // Track source email if needed
+                originalSource = accountEmail.lowercase(), // UNIVERSAL SHARING: Track exact source email (LOWERCASE)
                 externalId = externalId,
                 recipientName = finalRecipientName,
-                recipientAddress = finalRecipientAddress
+                recipientAddress = finalRecipientAddress,
+                currentMonthAmount = epsData.currentMonthAmount,
+                previousDebtAmount = epsData.previousDebtAmount,
+                metadata = "SOURCE_EMAIL:$accountEmail", // Persistence Hack for Firestore Sync
+                paymentStatus = initialStatus // Set initial status based on cloud
             )
             
             try {

@@ -43,7 +43,8 @@ fun DynamicSizeText(
     minFontSize: TextUnit = 20.sp,
     maxFontSize: TextUnit = 60.sp,
     maxLines: Int = 1,
-    textAlign: androidx.compose.ui.text.style.TextAlign = androidx.compose.ui.text.style.TextAlign.Center
+    textAlign: androidx.compose.ui.text.style.TextAlign = androidx.compose.ui.text.style.TextAlign.Center,
+    shadow: androidx.compose.ui.graphics.Shadow? = null
 ) {
     BoxWithConstraints(modifier = modifier) {
         val density = LocalDensity.current
@@ -53,7 +54,7 @@ fun DynamicSizeText(
         val availableWidthPx = with(density) { maxWidth.toPx() - 32f } // 16dp padding on each side
         
         // Binary search for optimal font size
-        val optimalFontSize = remember(text, availableWidthPx) {
+        val optimalFontSize = remember(text, availableWidthPx, shadow) {
             var currentSize = maxFontSize.value
             val minSize = minFontSize.value
             
@@ -63,7 +64,8 @@ fun DynamicSizeText(
                 style = TextStyle(
                     fontSize = maxFontSize,
                     fontWeight = fontWeight,
-                    fontFamily = fontFamily
+                    fontFamily = fontFamily,
+                    shadow = shadow
                 ),
                 constraints = Constraints(maxWidth = Int.MAX_VALUE)
             )
@@ -85,7 +87,8 @@ fun DynamicSizeText(
                     style = TextStyle(
                         fontSize = mid.sp,
                         fontWeight = fontWeight,
-                        fontFamily = fontFamily
+                        fontFamily = fontFamily,
+                        shadow = shadow
                     ),
                     constraints = Constraints(maxWidth = Int.MAX_VALUE)
                 )
@@ -109,6 +112,7 @@ fun DynamicSizeText(
             fontFamily = fontFamily,
             maxLines = maxLines,
             textAlign = textAlign,
+            style = TextStyle(shadow = shadow), // Apply shadow specifically
             modifier = Modifier.fillMaxWidth()
         )
     }

@@ -23,12 +23,17 @@ sealed class SplashState {
 class SplashViewModel @Inject constructor(
     private val secureStorage: SecureStorage,
     private val preferenceManager: com.platisa.app.core.data.preferences.PreferenceManager,
+    private val migrationManager: com.platisa.app.core.data.manager.MigrationManager,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
     // Expose splash style for UI to determine which image to show
     val splashScreenStyle: String
         get() = preferenceManager.splashScreenStyle
+    
+    // Expose isDarkTheme for UI to determine splash background
+    val isDarkTheme: Boolean
+        get() = preferenceManager.isDarkTheme
 
     private val _splashState = MutableStateFlow<SplashState>(SplashState.Loading)
     val splashState = _splashState.asStateFlow()
@@ -39,7 +44,25 @@ class SplashViewModel @Inject constructor(
 
     private fun checkStartDestination() {
         viewModelScope.launch {
-            kotlinx.coroutines.delay(3000) // Keep the 3 second delay for branding
+            // Run startup tasks in parallel with the splash delay
+            val startupJob = launch {
+                try {
+                    android.util.Log.d("SplashViewModel", "⏳ Starting migration...")
+                    migrationManager.performUniversalSharingMigration()
+                    android.util.Log.d("SplashViewModel", "✅ Migration finished")
+                } catch (e: Exception) {
+                    android.util.Log.e("SplashViewModel", "❌ Migration FAILED: ${e.message}", e)
+                }
+            }
+            
+            val delayJob = launch {
+                kotlinx.coroutines.delay(3000) // Keep branding visible
+            }
+            
+            // Wait for both to finish (or at least the delay)
+            // But we don't want migration to block user forever if it hangs.
+            // So we wait for delay, and if migration is still running, we let it run in background.
+            delayJob.join()
 
             val account = GoogleAuthManager.getSignedInAccount(context)
             if (account != null) {

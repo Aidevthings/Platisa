@@ -43,17 +43,11 @@ fun CameraScreen(
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
-    var hasCameraPermission by remember { mutableStateOf(false) }
+    // Removed unnecessary camera permission state as Google Scanner handles it
     var isScanning by remember { mutableStateOf(false) }
     var isProcessing by remember { mutableStateOf(false) }
     var showUrlDialog by remember { mutableStateOf(false) }
     var manualUrlText by remember { mutableStateOf("") }
-    
-    // Permission launcher
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission(),
-        onResult = { granted -> hasCameraPermission = granted }
-    )
     
     // Gallery launcher
     val galleryLauncher = rememberLauncherForActivityResult(
@@ -68,7 +62,6 @@ fun CameraScreen(
         }
     }
     
-    // Google Scanner function
     // Google Scanner function
     val launchGoogleScanner: () -> Unit = {
         if (!isScanning && !isProcessing) {
@@ -152,18 +145,14 @@ fun CameraScreen(
                         .addOnFailureListener { e ->
                             android.util.Log.e("CameraScreen", "Google Scanner failed", e)
                             scope.launch {
-                                SnackbarManager.showMessage("Skeniranje otkazano")
+                                // Specific handle for common "Cancelled" or generic errors if needed
+                                SnackbarManager.showMessage("Skeniranje nije uspelo: ${e.localizedMessage ?: "Greška"}")
                             }
                             isScanning = false
                         }
                         .addOnCanceledListener {
                             isScanning = false
-                            // User cancelled scanning, go to Price Comparison directly
-                            scope.launch {
-                                navController.navigate(Screen.Market.route) {
-                                    popUpTo(Screen.Home.route)
-                                }
-                            }
+                            // User cancelled scanning, stay on screen.
                         }
                 } catch (e: Exception) {
                     SnackbarManager.showMessage("Greška: ${e.message}")
@@ -173,16 +162,11 @@ fun CameraScreen(
         }
     }
     
-    // Request permission on launch
-    LaunchedEffect(Unit) {
-        permissionLauncher.launch(Manifest.permission.CAMERA)
-    }
-    
+    // Auto-launch scanner ONLY ONCE
     var hasAutoLaunched by rememberSaveable { mutableStateOf(false) }
-    
-    // Auto-launch scanner ONLY ONCE when permission granted
-    LaunchedEffect(hasCameraPermission) {
-        if (hasCameraPermission && !isScanning && !hasAutoLaunched) {
+
+    LaunchedEffect(Unit) {
+        if (!hasAutoLaunched) {
             hasAutoLaunched = true
             launchGoogleScanner()
         }
@@ -244,8 +228,11 @@ fun CameraScreen(
             
             // Scan Button
             Button(
-                onClick = { launchGoogleScanner() },
-                enabled = hasCameraPermission && !isScanning && !isProcessing,
+                onClick = { 
+                    viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
+                    launchGoogleScanner() 
+                },
+                enabled = !isScanning && !isProcessing,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(64.dp),
@@ -286,7 +273,10 @@ fun CameraScreen(
             ) {
                 // Gallery Button
                 OutlinedButton(
-                    onClick = { galleryLauncher.launch("image/*") },
+                    onClick = { 
+                        viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
+                        galleryLauncher.launch("image/*") 
+                    },
                     modifier = Modifier
                         .weight(1f)
                         .height(56.dp),
@@ -303,7 +293,10 @@ fun CameraScreen(
                 
                 // Manual Link Button
                 OutlinedButton(
-                    onClick = { showUrlDialog = true },
+                    onClick = { 
+                        viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
+                        showUrlDialog = true 
+                    },
                     modifier = Modifier
                         .weight(1f)
                         .height(56.dp),
@@ -322,16 +315,34 @@ fun CameraScreen(
             Spacer(modifier = Modifier.height(32.dp))
             
             // Back button
-            TextButton(
-                onClick = { navController.popBackStack() }
+            // Back button
+            Button(
+                onClick = { 
+                    viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
+                    navController.navigate(Screen.Market.route) {
+                        popUpTo(Screen.Home.route) { inclusive = false }
+                        launchSingleTop = true
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = NeonCyan,
+                    contentColor = Color.Black
+                ),
+                shape = RoundedCornerShape(12.dp)
             ) {
                 Icon(
                     Icons.Default.ArrowBack,
-                    contentDescription = null,
-                    tint = Color.Gray
+                    contentDescription = null
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Nazad", color = Color.Gray)
+                Text(
+                    "Nazad u Market",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
             }
         }
     }

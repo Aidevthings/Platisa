@@ -24,6 +24,7 @@ import com.google.accompanist.pager.rememberPagerState
 import com.platisa.app.R
 import com.platisa.app.ui.components.PlatisaButton
 import androidx.compose.ui.graphics.Brush
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalPagerApi::class)
 @Composable
@@ -72,6 +73,8 @@ fun WalkthroughScreen(
     )
 
     val pagerState = rememberPagerState()
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+
 
     Column(
         modifier = Modifier
@@ -85,7 +88,11 @@ fun WalkthroughScreen(
                 .padding(16.dp),
             contentAlignment = Alignment.TopEnd
         ) {
-            TextButton(onClick = { navController.popBackStack() }) {
+            val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+            TextButton(onClick = { 
+                haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                navController.popBackStack() 
+            }) {
                 Text("Zatvori", color = MaterialTheme.colorScheme.primary)
             }
         }
@@ -133,11 +140,16 @@ fun WalkthroughScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             // Button (Next or Finish)
+            val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
             PlatisaButton(
                 text = if (pagerState.currentPage == pages.lastIndex) "Završi" else "Dalje",
                 onClick = {
-                    /* Handle navigation or scroll */
-                    if (pagerState.currentPage == pages.lastIndex) {
+                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                    if (pagerState.currentPage < pages.size - 1) {
+                         scope.launch {
+                             pagerState.animateScrollToPage(pagerState.currentPage + 1)
+                         }
+                    } else {
                         navController.popBackStack()
                     }
                 },
@@ -162,21 +174,12 @@ fun WalkthroughPageContent(page: WalkthroughPage, isDark: Boolean) {
             modifier = Modifier.fillMaxSize()
         )
 
-        // 2. Gradient Scrim & Text Container
+        // 2. Solid Semi-Transparent Background & Text Container
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.BottomCenter)
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Color.Transparent,
-                            MaterialTheme.colorScheme.background.copy(alpha = 0.8f),
-                            MaterialTheme.colorScheme.background
-                        ),
-                        startY = 0f
-                    )
-                )
+                .background(Color.Black.copy(alpha = 0.8f)) // Uniform 80% opacity (20% transparent)
         ) {
             Column(
                 modifier = Modifier
@@ -188,7 +191,7 @@ fun WalkthroughPageContent(page: WalkthroughPage, isDark: Boolean) {
                     text = page.title,
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onBackground,
+                    color = Color.White, // Force White for contrast on dark scrim
                     textAlign = TextAlign.Center
                 )
 
@@ -197,7 +200,7 @@ fun WalkthroughPageContent(page: WalkthroughPage, isDark: Boolean) {
                 Text(
                     text = page.description,
                     style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.9f),
+                    color = Color.White.copy(alpha = 0.9f), // Force White
                     textAlign = TextAlign.Center
                 )
                 

@@ -129,7 +129,10 @@ fun ReviewReceiptScreen(
                             ) 
                         },
                         navigationIcon = {
-                            IconButton(onClick = { navController.navigateUp() }) {
+                            IconButton(onClick = { 
+                                viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
+                                navController.navigateUp() 
+                            }) {
                                 Icon(
                                     imageVector = androidx.compose.material.icons.Icons.Default.ArrowBack,
                                     contentDescription = "Nazad",
@@ -142,7 +145,10 @@ fun ReviewReceiptScreen(
                         ),
                         actions = {
                             // Manual URL Button
-                            IconButton(onClick = { showUrlDialog = true }) {
+                            IconButton(onClick = { 
+                                viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
+                                showUrlDialog = true 
+                            }) {
                                 Icon(
                                     imageVector = Icons.Default.Link,
                                     contentDescription = "Manual URL",
@@ -158,6 +164,7 @@ fun ReviewReceiptScreen(
                         PlatisaButton(
                             text = "Sačuvaj Račun (Kamera)",
                             onClick = {
+                                viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
                                 viewModel.confirmReceipt(
                                     merchant = merchant,
                                     total = total,
@@ -193,6 +200,7 @@ fun ReviewReceiptScreen(
                         
                         IconButton(
                             onClick = {
+                                viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
                                 val options = CropImageOptions(
                                     imageSourceIncludeGallery = false,
                                     imageSourceIncludeCamera = false
@@ -263,6 +271,7 @@ fun ReviewReceiptScreen(
                                     // Save to Gallery Button
                                     androidx.compose.material3.Button(
                                         onClick = {
+                                            viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
                                             viewModel.saveQrCodeToGallery(merchant, total, date)
                                             navController.navigateUp()
                                         },
@@ -351,6 +360,7 @@ fun ReviewReceiptScreen(
                             }
                             androidx.compose.material3.Button(
                                 onClick = { 
+                                    viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
                                     navController.navigate(
                                         com.platisa.app.ui.navigation.Screen.BillDetails.createRoute(
                                             duplicateReceiptId.toString()
@@ -630,7 +640,10 @@ fun ReviewReceiptScreen(
                     val rawText by viewModel.rawText.collectAsState()
                     
                     androidx.compose.material3.OutlinedButton(
-                        onClick = { showDebugDialog = true },
+                        onClick = { 
+                            viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
+                            showDebugDialog = true 
+                        },
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text("Prikaži Debug Info (Gemini & OCR)", color = com.platisa.app.ui.theme.NeonCyan)
@@ -698,6 +711,7 @@ fun ReviewReceiptScreen(
             confirmButton = {
                 androidx.compose.material3.TextButton(
                     onClick = {
+                        viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
                         viewModel.processManualUrl(manualUrlText)
                         showUrlDialog = false
                     }

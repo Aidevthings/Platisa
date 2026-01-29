@@ -22,6 +22,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -44,21 +45,30 @@ fun SubscriptionPaywallScreen(
 ) {
     val status by viewModel.status.collectAsState()
     val daysRemaining by viewModel.daysRemaining.collectAsState()
+    val selectedPlan by viewModel.selectedPlan.collectAsState()
     val context = LocalContext.current
+    
+    // Theme Adaptation
+    val isDark = PlatisaTheme.colors.isDark
+    val textColor = if (isDark) Color.White else PlatisaTheme.colors.textPrimary
+    val textLabelColor = if (isDark) Color.White.copy(alpha = 0.6f) else PlatisaTheme.colors.textLabel
+    val cardBgColor = if (isDark) Color(0xFF1A1D24) else Color.White
+    val screenBgColor = if (isDark) Color.Transparent else PlatisaTheme.colors.surfaceContainer
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        // Background Image
-        androidx.compose.foundation.Image(
-            painter = androidx.compose.ui.res.painterResource(id = com.platisa.app.R.drawable.pozadina),
-            contentDescription = null,
-            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-            modifier = Modifier.fillMaxSize()
-        )
+    Box(modifier = Modifier.fillMaxSize().background(screenBgColor)) {
+        // Background Image (Only in Dark Mode)
+        if (isDark) {
+            androidx.compose.foundation.Image(
+                painter = androidx.compose.ui.res.painterResource(id = com.platisa.app.R.drawable.pozadina),
+                contentDescription = null,
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
 
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                // Removed VoidBackground to show image
         ) {
         // --- HEADER ---
         Row(
@@ -71,12 +81,12 @@ fun SubscriptionPaywallScreen(
                 Icon(
                     imageVector = androidx.compose.material.icons.Icons.Filled.ArrowBack,
                     contentDescription = "Back",
-                    tint = PlatisaTheme.colors.textPrimary
+                    tint = textColor
                 )
             }
             Text(
                 text = "Pretplata",
-                color = Color.White,
+                color = textColor,
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(start = 8.dp)
@@ -86,6 +96,7 @@ fun SubscriptionPaywallScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .weight(1f) // Take remaining space but allow bottom button
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
@@ -93,13 +104,14 @@ fun SubscriptionPaywallScreen(
             
             // --- STATUS CARD ---
             if (status != null) {
-                StatusCard(status = status!!, daysRemaining = daysRemaining.toInt())
+                StatusCard(status = status!!, daysRemaining = daysRemaining.toInt(), isDark = isDark)
             } else {
                  Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(140.dp)
-                        .background(Color(0xFF1A1D24), RoundedCornerShape(16.dp)),
+                        .background(cardBgColor, RoundedCornerShape(16.dp))
+                        .border(1.dp, Color.Gray.copy(alpha = 0.2f), RoundedCornerShape(16.dp)),
                     contentAlignment = Alignment.Center
                 ) {
                     CircularProgressIndicator(color = NeonCyan)
@@ -111,8 +123,8 @@ fun SubscriptionPaywallScreen(
             // --- UPGRADE SECTION ---
             Text(
                 text = "Izaberite Plan",
-                color = PlatisaTheme.colors.textPrimary,
-                fontSize = 18.sp,
+                color = textColor,
+                fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.align(Alignment.Start)
             )
@@ -125,9 +137,9 @@ fun SubscriptionPaywallScreen(
                 price = "100 RSD",
                 subtitle = "/ mesečno",
                 isBestValue = false,
-                onClick = { 
-                    android.widget.Toast.makeText(context, "Coming Soon: Google Play Billing", android.widget.Toast.LENGTH_SHORT).show()
-                }
+                isSelected = selectedPlan == "MONTHLY",
+                isDark = isDark,
+                onClick = { viewModel.selectPlan("MONTHLY") }
             )
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -138,25 +150,52 @@ fun SubscriptionPaywallScreen(
                 price = "1000 RSD",
                 subtitle = "/ godišnje",
                 isBestValue = true,
+                isSelected = selectedPlan == "YEARLY",
+                isDark = isDark,
                 badge = "UŠTEDA 17%",
-                onClick = {
-                    android.widget.Toast.makeText(context, "Coming Soon: Google Play Billing", android.widget.Toast.LENGTH_SHORT).show()
-                }
+                onClick = { viewModel.selectPlan("YEARLY") }
             )
+            
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // SUBSCRIBE BUTTON
+            val priceText = if (selectedPlan == "YEARLY") "1000 RSD" else "100 RSD"
+            Button(
+                onClick = { 
+                    context.findActivity()?.let { activity ->
+                        viewModel.buySubscription(activity)
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp)
+                    .shadow(if (isDark) 12.dp else 4.dp, RoundedCornerShape(12.dp), spotColor = NeonCyan),
+                colors = ButtonDefaults.buttonColors(containerColor = NeonCyan),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text(
+                    text = "Pretplati se - $priceText",
+                    color = Color.Black,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
             
             Spacer(modifier = Modifier.height(32.dp))
             
             // --- MANAGE ACTIONS ---
-            Divider(color = PlatisaTheme.colors.textPrimary.copy(alpha = 0.1f))
+            Divider(color = textColor.copy(alpha = 0.15f))
             
             Spacer(modifier = Modifier.height(16.dp))
             
             TextButton(
                 onClick = {
-                     android.widget.Toast.makeText(context, "Checking for past purchases...", android.widget.Toast.LENGTH_SHORT).show()
+                     // TODO: Call billingManager.queryPurchases() explicitly if needed
+                     android.widget.Toast.makeText(context, "Osvežavanje statusa...", android.widget.Toast.LENGTH_SHORT).show()
+                     viewModel.checkStatus()
                 }
             ) {
-                Text("Obnovi kupovinu", color = PlatisaTheme.colors.textLabel)
+                Text("Obnovi kupovinu", color = textLabelColor, fontWeight = FontWeight.Medium)
             }
             
             TextButton(
@@ -165,7 +204,7 @@ fun SubscriptionPaywallScreen(
                      context.startActivity(intent)
                 }
             ) {
-                Text("Upravljaj preko Google Play-a", color = PlatisaTheme.colors.textLabel)
+                Text("Upravljaj preko Google Play-a", color = textLabelColor, fontWeight = FontWeight.Medium)
             }
             
             Spacer(modifier = Modifier.height(16.dp))
@@ -198,17 +237,27 @@ fun SubscriptionPaywallScreen(
     }
 }
 
+// Helper to find Activity from Context
+fun android.content.Context.findActivity(): android.app.Activity? {
+    var context = this
+    while (context is android.content.ContextWrapper) {
+        if (context is android.app.Activity) return context
+        context = context.baseContext
+    }
+    return null
+}
+
 @Composable
 fun PromoCodeDialog(
     onDismiss: () -> Unit,
     onSubmit: (String) -> Unit
 ) {
     var code by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
-    val context = LocalContext.current
+    val isDark = PlatisaTheme.colors.isDark
     
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Unesite Promo Kod", color = PlatisaTheme.colors.textPrimary) },
+        title = { Text("Unesite Promo Kod", color = if (isDark) Color.White else PlatisaTheme.colors.textPrimary) },
         text = {
             OutlinedTextField(
                 value = code,
@@ -217,9 +266,9 @@ fun PromoCodeDialog(
                 singleLine = true,
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = PlatisaTheme.colors.neonCyan,
-                    unfocusedBorderColor = PlatisaTheme.colors.textLabel,
-                    focusedTextColor = PlatisaTheme.colors.textPrimary,
-                    unfocusedTextColor = PlatisaTheme.colors.textPrimary
+                    unfocusedBorderColor = if (isDark) Color.Gray else PlatisaTheme.colors.textLabel,
+                    focusedTextColor = if (isDark) Color.White else PlatisaTheme.colors.textPrimary,
+                    unfocusedTextColor = if (isDark) Color.White.copy(alpha=0.8f) else PlatisaTheme.colors.textPrimary
                 )
             )
         },
@@ -235,17 +284,17 @@ fun PromoCodeDialog(
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = NeonCyan)
             ) {
-                Text("Potvrdi", color = PlatisaTheme.colors.textOnPrimary)
+                Text("Potvrdi", color = Color.Black)
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Otkaži", color = PlatisaTheme.colors.textLabel)
+                Text("Otkaži", color = if (isDark) Color.White else PlatisaTheme.colors.textPrimary)
             }
         },
 
-        containerColor = PlatisaTheme.colors.surfaceContainer,
-        textContentColor = PlatisaTheme.colors.textPrimary
+        containerColor = if (isDark) Color(0xFF1A1D24) else Color.White,
+        textContentColor = if (isDark) Color.White else PlatisaTheme.colors.textPrimary
     )
 }
 
@@ -253,30 +302,51 @@ fun PromoCodeDialog(
 @Composable
 fun StatusCard(
     status: TrialStatus, 
-    daysRemaining: Int
+    daysRemaining: Int,
+    isDark: Boolean
 ) {
     val (statusText, statusColor, subText) = when (status) {
-        is TrialStatus.Active -> Triple("PREMIUM", PlatisaTheme.colors.success, "Preostalo dana: $daysRemaining") // Or specific success color
-        is TrialStatus.Expired -> Triple("EXPIRED", PlatisaTheme.colors.error, "Nadogradite za nastavak")
-        is TrialStatus.Error -> Triple("ERROR", PlatisaTheme.colors.error, (status as TrialStatus.Error).message)
+        is TrialStatus.Active -> Triple("PREMIUM", Color(0xFF00FF87), "Preostalo dana: $daysRemaining")
+        is TrialStatus.Expired -> Triple("ISTEKLO", PlatisaTheme.colors.error, "Nadogradite za nastavak")
+        is TrialStatus.Error -> Triple("GREŠKA", PlatisaTheme.colors.error, (status as TrialStatus.Error).message)
     }
 
+    // Gradient colors for the circle
+    val gradientColors = listOf(
+        Color(0xFF00FFFF), // Cyan
+        Color(0xFF00FF87), // Green
+        Color(0xFF87FF00), // Lime
+        Color(0xFF00FF87), // Green
+        Color(0xFF00FFFF)  // Cyan
+    )
+    
+    val containerColor = if (isDark) Color(0xFF1A1D24).copy(alpha = 0.95f) else Color.White
+    val textColor = if (isDark) Color.White else PlatisaTheme.colors.textPrimary
+    val subTextColor = if (isDark) Color.White.copy(alpha = 0.8f) else PlatisaTheme.colors.textLabel
+
     Card(
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1D24)),
-        shape = RoundedCornerShape(16.dp),
-        modifier = Modifier.fillMaxWidth()
+        colors = CardDefaults.cardColors(containerColor = containerColor),
+        shape = RoundedCornerShape(20.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(
+                width = 1.dp,
+                brush = Brush.linearGradient(listOf(Color(0xFF00FFFF).copy(alpha = 0.3f), Color(0xFF00FF87).copy(alpha = 0.3f))),
+                shape = RoundedCornerShape(20.dp)
+            )
+            .shadow(if (isDark) 0.dp else 4.dp, RoundedCornerShape(20.dp), spotColor = Color.Black.copy(alpha=0.1f))
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(20.dp),
+                .padding(24.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Column {
                 Text(
                     text = "VAŠ PLAN",
-                    color = PlatisaTheme.colors.textLabel,
+                    color = subTextColor.copy(alpha = 0.6f),
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 1.sp
@@ -285,39 +355,100 @@ fun StatusCard(
                 Text(
                     text = statusText,
                     color = statusColor,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold
+                    fontSize = 26.sp,
+                    fontWeight = FontWeight.ExtraBold
                 )
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(6.dp))
                 Text(
                     text = subText,
-                    color = PlatisaTheme.colors.textLabel,
-                    fontSize = 14.sp
+                    color = subTextColor,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium
                 )
             }
             
-            // Circular Progress (Visual only for now)
-            Box(contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(
-                    progress = 1f,
-                    modifier = Modifier.size(90.dp),
-                    color = PlatisaTheme.colors.textLabel.copy(alpha = 0.2f),
-                    trackColor = Color.Transparent,
+            // Premium Gradient Circle with Days Counter
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier.size(110.dp)
+            ) {
+                // Outer glow effect
+                Box(
+                    modifier = Modifier
+                        .size(110.dp)
+                        .background(
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    statusColor.copy(alpha = if (isDark) 0.3f else 0.15f),
+                                    statusColor.copy(alpha = if (isDark) 0.1f else 0.05f),
+                                    Color.Transparent
+                                )
+                            ),
+                            shape = CircleShape
+                        )
                 )
-                CircularProgressIndicator(
-                    progress = (daysRemaining / 90f).coerceIn(0f, 1f),
-                    modifier = Modifier.size(90.dp),
-                    color = statusColor,
-                    trackColor = Color.Transparent,
+                
+                // Background track circle
+                Box(
+                    modifier = Modifier
+                        .size(95.dp)
+                        .border(
+                            width = 4.dp,
+                            color = if (isDark) Color.White.copy(alpha = 0.1f) else Color.Gray.copy(alpha = 0.1f),
+                            shape = CircleShape
+                        )
                 )
-                com.platisa.app.ui.components.DynamicSizeText(
-                    text = "$daysRemaining",
-                    color = PlatisaTheme.colors.textPrimary,
-                    minFontSize = 14.sp,
-                    maxFontSize = 28.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(16.dp) // padding to keep inside circle
-                )
+                
+                // Gradient progress arc using Canvas
+                androidx.compose.foundation.Canvas(
+                    modifier = Modifier.size(95.dp)
+                ) {
+                    val strokeWidth = 6.dp.toPx()
+                    val sweepAngle = (daysRemaining / 90f).coerceIn(0f, 1f) * 360f
+                    
+                    drawArc(
+                        brush = Brush.sweepGradient(gradientColors),
+                        startAngle = -90f,
+                        sweepAngle = sweepAngle,
+                        useCenter = false,
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(
+                            width = strokeWidth,
+                            cap = androidx.compose.ui.graphics.StrokeCap.Round
+                        )
+                    )
+                }
+                
+                // Inner circle with gradient background
+                Box(
+                    modifier = Modifier
+                        .size(75.dp)
+                        .background(
+                            brush = Brush.radialGradient(
+                                colors = if (isDark) {
+                                    listOf(Color(0xFF2A2D34), Color(0xFF1A1D24))
+                                } else {
+                                    listOf(Color(0xFFF0F0F0), Color(0xFFFFFFFF))
+                                }
+                            ),
+                            shape = CircleShape
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "$daysRemaining",
+                            color = textColor,
+                            fontSize = 28.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "dana",
+                            color = textColor.copy(alpha = 0.7f),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
             }
         }
     }
@@ -329,20 +460,50 @@ fun PlanCard(
     price: String,
     subtitle: String,
     isBestValue: Boolean,
+    isSelected: Boolean,
+    isDark: Boolean,
     badge: String? = null,
     onClick: () -> Unit
 ) {
-    val borderColor = if (isBestValue) MatrixGreen else PlatisaTheme.colors.textPrimary.copy(alpha = 0.1f)
-    val bgColor = if (isBestValue) MatrixGreen.copy(alpha = 0.05f) else Color.Transparent
+    val gradientBorder = if (isSelected) {
+        Brush.linearGradient(
+            colors = listOf(com.platisa.app.ui.theme.NeonCyan, com.platisa.app.ui.theme.NeonCyan)
+        )
+    } else if (isBestValue) {
+        Brush.linearGradient(
+            colors = listOf(Color(0xFF00FFFF), Color(0xFF00FF87), Color(0xFF87FF00))
+        )
+    } else {
+        Brush.linearGradient(
+            colors = if (isDark) {
+                listOf(Color.White.copy(alpha = 0.2f), Color.White.copy(alpha = 0.1f))
+            } else {
+                 listOf(Color.Gray.copy(alpha = 0.3f), Color.Gray.copy(alpha = 0.2f))
+            }
+        )
+    }
+    
+    val bgColor = if (isSelected) com.platisa.app.ui.theme.NeonCyan.copy(alpha = 0.15f) 
+                  else if (isBestValue) Color(0xFF00FF87).copy(alpha = 0.08f) 
+                  else if (isDark) Color(0xFF1A1D24).copy(alpha = 0.8f)
+                  else Color.White
+
+    val textColor = if (isDark) Color.White else PlatisaTheme.colors.textPrimary
+    val subtitleColor = if (isDark) Color.White.copy(alpha = 0.6f) else PlatisaTheme.colors.textLabel
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(16.dp))
             .background(bgColor)
-            .border(1.dp, borderColor, RoundedCornerShape(12.dp))
+            .border(
+                width = if (isSelected) 3.dp else if (isBestValue) 2.dp else 1.dp,
+                brush = gradientBorder,
+                shape = RoundedCornerShape(16.dp)
+            )
+            .then(if (!isDark && !isSelected && !isBestValue) Modifier.shadow(2.dp, RoundedCornerShape(16.dp)) else Modifier)
             .clickable(onClick = onClick)
-            .padding(16.dp)
+            .padding(20.dp)
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -353,20 +514,29 @@ fun PlanCard(
                 if (badge != null) {
                     Text(
                         text = badge,
-                        color = MatrixGreen,
-                        fontSize = 10.sp,
+                        color = if (isDark) Color(0xFF00FF87) else Color(0xFF00008B), // Dark Blue in Light Mode
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 1.sp,
                         modifier = Modifier
-                            .background(MatrixGreen.copy(alpha = 0.1f), RoundedCornerShape(4.dp))
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                            .background(
+                                brush = Brush.horizontalGradient(
+                                    colors = if (isDark) {
+                                        listOf(Color(0xFF00FF87).copy(alpha = 0.2f), Color(0xFF00FFFF).copy(alpha = 0.2f))
+                                    } else {
+                                        listOf(Color(0xFF00008B).copy(alpha = 0.1f), Color(0xFF4169E1).copy(alpha = 0.1f)) // Lighter blue background
+                                    }
+                                ),
+                                shape = RoundedCornerShape(6.dp)
+                            )
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
                 }
                 Text(
                     text = title,
-                    color = PlatisaTheme.colors.textPrimary,
-                    fontSize = 18.sp,
+                    color = textColor,
+                    fontSize = 20.sp,
                     fontWeight = FontWeight.Bold
                 )
             }
@@ -374,15 +544,25 @@ fun PlanCard(
             Column(horizontalAlignment = Alignment.End) {
                 Text(
                     text = price,
-                    color = PlatisaTheme.colors.textPrimary,
-                    fontSize = 20.sp,
+                    color = textColor,
+                    fontSize = 22.sp,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
                     text = subtitle,
-                    color = PlatisaTheme.colors.textPrimary.copy(alpha = 0.6f),
-                    fontSize = 12.sp
+                    color = subtitleColor,
+                    fontSize = 13.sp
                 )
+                
+                if (isSelected) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Icon(
+                        imageVector = Icons.Filled.CheckCircle,
+                        contentDescription = "Selected",
+                        tint = com.platisa.app.ui.theme.NeonCyan,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
             }
         }
     }

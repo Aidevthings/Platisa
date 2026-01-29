@@ -21,6 +21,7 @@ class PreferenceManager @Inject constructor(
         private const val KEY_NOTIFY_OVERDUE = "notify_overdue"
         private const val KEY_NOTIFY_DUPLICATE = "notify_duplicate"
         private const val KEY_NOTIFICATION_TIME_HOUR = "notification_time_hour"
+        private const val KEY_NOTIFICATION_TIME_MINUTE = "notification_time_minute"
         
         // Theme preference
         private const val KEY_IS_DARK_THEME = "is_dark_theme"
@@ -52,10 +53,18 @@ class PreferenceManager @Inject constructor(
         get() = prefs.getInt(KEY_NOTIFICATION_TIME_HOUR, 9) // Default 9 AM
         set(value) = prefs.edit().putInt(KEY_NOTIFICATION_TIME_HOUR, value).apply()
 
+    var notificationTimeMinute: Int
+        get() = prefs.getInt(KEY_NOTIFICATION_TIME_MINUTE, 0) // Default 00 minutes
+        set(value) = prefs.edit().putInt(KEY_NOTIFICATION_TIME_MINUTE, value).apply()
+
     // Feature Flags / Discovery
     var hasScannedRestaurantBill: Boolean
         get() = prefs.getBoolean("has_scanned_restaurant_bill", false)
         set(value) = prefs.edit().putBoolean("has_scanned_restaurant_bill", value).apply()
+
+    var hapticEnabled: Boolean
+        get() = prefs.getBoolean("haptic_enabled", false)
+        set(value) = prefs.edit().putBoolean("haptic_enabled", value).apply()
 
     var hasSeenTutorial: Boolean
         get() = prefs.getBoolean("has_seen_tutorial", false)
@@ -82,7 +91,7 @@ class PreferenceManager @Inject constructor(
         set(value) = prefs.edit().putBoolean("is_lifetime", value).apply()
 
     var splashScreenStyle: String
-        get() = prefs.getString(KEY_SPLASH_SCREEN_STYLE, "LIGHT") ?: "LIGHT"
+        get() = prefs.getString(KEY_SPLASH_SCREEN_STYLE, "") ?: ""
         set(value) = prefs.edit().putString(KEY_SPLASH_SCREEN_STYLE, value).apply()
 
     private val _themeFlow = kotlinx.coroutines.flow.MutableStateFlow(isDarkTheme)
@@ -101,5 +110,19 @@ class PreferenceManager @Inject constructor(
             prefs.edit().putBoolean(KEY_IS_DARK_THEME, value).apply()
             _themeFlow.value = value
         }
+
+    // Universal Sharing Migration Version
+    var universalSharingMigrationVersion: Int
+        get() = prefs.getInt("universal_sharing_migration_version", 0)
+        set(value) = prefs.edit().putInt("universal_sharing_migration_version", value).apply()
+
+    // Currency Rate Caching
+    var lastKnownEuroRate: Float
+        get() = prefs.getFloat("last_known_euro_rate", 117.5f)
+        set(value) = prefs.edit().putFloat("last_known_euro_rate", value).apply()
+
+    var lastRateFetchTime: Long
+        get() = prefs.getLong("last_rate_fetch_time", 0)
+        set(value) = prefs.edit().putLong("last_rate_fetch_time", value).apply()
 }
 

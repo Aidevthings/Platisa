@@ -26,5 +26,25 @@ object NetworkModule {
     fun provideGmailRepository(repository: GmailRepositoryImpl): GmailRepository {
         return repository
     }
+    
+    @Provides
+    @Singleton
+    fun provideCurrencyApi(): com.platisa.app.core.data.network.CurrencyApi {
+        return retrofit2.Retrofit.Builder()
+            .baseUrl("https://api.frankfurter.app/")
+            .addConverterFactory(retrofit2.converter.gson.GsonConverterFactory.create())
+            .build()
+            .create(com.platisa.app.core.data.network.CurrencyApi::class.java)
+    }
+
+    @Provides
+    @Singleton
+    fun provideFeedbackApi(): com.platisa.app.core.data.network.FeedbackApi {
+        return retrofit2.Retrofit.Builder()
+            .baseUrl("https://formspree.io/") // Base URL
+            .addConverterFactory(retrofit2.converter.gson.GsonConverterFactory.create())
+            .build()
+            .create(com.platisa.app.core.data.network.FeedbackApi::class.java)
+    }
 }
 

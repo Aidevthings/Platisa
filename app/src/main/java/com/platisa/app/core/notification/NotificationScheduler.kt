@@ -22,20 +22,25 @@ class NotificationScheduler @Inject constructor(
     }
     
     fun scheduleNotificationChecks() {
-        val currentHour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
-        val preferredHour = preferenceManager.notificationTimeHour
-        
-        // Calculate delay until next preferred notification time
-        val delayHours = if (currentHour < preferredHour) {
-            preferredHour - currentHour
-        } else {
-            24 - currentHour + preferredHour
+        val now = Calendar.getInstance()
+        val target = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, preferenceManager.notificationTimeHour)
+            set(Calendar.MINUTE, preferenceManager.notificationTimeMinute)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
         }
-        
+
+        // If target time is before now, add 1 day
+        if (target.before(now)) {
+            target.add(Calendar.DAY_OF_YEAR, 1)
+        }
+
+        val initialDelay = target.timeInMillis - now.timeInMillis
+
         val workRequest = PeriodicWorkRequestBuilder<NotificationWorker>(
             24, TimeUnit.HOURS // Run once per day
         )
-            .setInitialDelay(delayHours.toLong(), TimeUnit.HOURS)
+            .setInitialDelay(initialDelay, TimeUnit.MILLISECONDS)
             .build()
         
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(
@@ -44,6 +49,7 @@ class NotificationScheduler @Inject constructor(
             workRequest
         )
     }
+
     
     fun cancelNotificationChecks() {
         WorkManager.getInstance(context).cancelUniqueWork(NOTIFICATION_WORK_NAME)

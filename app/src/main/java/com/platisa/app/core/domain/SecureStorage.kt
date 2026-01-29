@@ -11,9 +11,13 @@ interface SecureStorage {
     fun getCurrency(): String
     fun setCurrency(currency: String)
     
-    // Gmail sync tracking
+    // Gmail sync tracking (global - legacy)
     fun getLastGmailSyncTimestamp(): Long // Unix timestamp
     fun setLastGmailSyncTimestamp(timestamp: Long)
+    
+    // Per-account Gmail sync tracking (for multi-account support)
+    fun getLastGmailSyncTimestamp(email: String): Long
+    fun setLastGmailSyncTimestamp(email: String, timestamp: Long)
     
     // Multi-account support
     fun getConnectedAccounts(): Set<String>
