@@ -5,6 +5,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.regex.Pattern
+import com.platisa.app.core.utils.SerbianGrammarUtils
 
 data class ParsedReceipt(
     val merchantName: String? = null,
@@ -196,11 +197,22 @@ object ReceiptParser {
             if (infostanAddress != null) return infostanName to infostanAddress
         }
 
+        // SPECIAL CASE: TELEKOM / MTS / YETTEL / A1 (Explicit merchant check)
+        val isTelekomMerchant = upperMerchant?.contains("TELEKOM") == true || upperMerchant?.contains("MTS") == true ||
+                                upperMerchant?.contains("YETTEL") == true || upperMerchant?.contains("A1") == true ||
+                                upperMerchant?.contains("SBB") == true || upperMerchant?.contains("ORION") == true
+        
+        if (isTelekomMerchant) {
+             val (telName, telAddr) = parseTelekomRecipient(text)
+             // Only return if we actually found an address, otherwise fall through to generic
+             if (telAddr != null) return telName to telAddr
+        }
+
         // 1. SPECIFIC KEYWORDS (Priority)
         // User requested: "Adresa korisnika", "Adresa mernog mesta", "Opstina"
         val addressKeywords = listOf(
             "Adresa mernog mesta", "Адреса мерног места",
-            "Adresa korisnika", "Адреса корисnika",
+            "Adresa korisnika", "Адреса корисника",
             "Adresa objekta", "Адреса објекта"
         )
         
@@ -208,6 +220,13 @@ object ReceiptParser {
             val line = lines[i]
             val keywordMatch = addressKeywords.find { line.contains(it, ignoreCase = true) }
             if (keywordMatch != null) {
+                // DETECT TELEKOM-STYLE ADDRESS (3 lines) via "Adresa korisnika"
+                // Even if merchant detection failed, this keyword implies the format.
+                if (keywordMatch.contains("korisnika", ignoreCase = true)) {
+                    val (telName, telAddr) = parseTelekomRecipient(text)
+                    if (telAddr != null) return telName to telAddr
+                }
+
                 // Address is usually after the keyword or on the next line
                 var candidate = line.substringAfter(keywordMatch).trim().removePrefix(":").trim()
                 
@@ -270,7 +289,64 @@ object ReceiptParser {
             address = "ADRESA: DEBUG GLOBAL FAILURE. Lines: ${lines.take(2)}" 
         }
 
-        return normalizeText(name) to normalizeText(address)
+        return normalizeText(name) to normalizeText(address)?.let { SerbianGrammarUtils.transliterateCyrillicToLatin(it) }
+    }
+
+    /**
+     * Specialized parser for Telekom/MTS recipient info (3-line format).
+     * Format:
+     * Adresa korisnika:
+     * [Street Address]
+     * [Postal Code City]
+     * [Municipality]
+     */
+    private fun parseTelekomRecipient(text: String): Pair<String?, String?> {
+        val lines = text.lines().map { it.trim() }.filter { it.isNotEmpty() }
+        var name: String? = null
+        var address: String? = null
+        
+        val keywords = listOf("Adresa korisnika", "Адреса корисника")
+        
+        for (i in lines.indices) {
+            val line = lines[i]
+            if (keywords.any { line.contains(it, ignoreCase = true) }) {
+                // Determine name (usually above "Adresa korisnika" if present, but user screenshot shows Adresa block isolated)
+                // If name is needed, we look above.
+                if (i > 0) name = findNameAbove(lines, i)
+                
+                // Address parts: Line i+1 (Street), Line i+2 (City), Line i+3 (Municipality)
+                val parts = mutableListOf<String>()
+                
+                // Line 1: Street
+                if (i + 1 < lines.size) {
+                    val l1 = cleanAddress(lines[i+1])
+                    if (l1 != null && !l1.contains("RSD") && !l1.contains("DIN")) parts.add(l1)
+                }
+                
+                // Line 2: City / Postal
+                if (i + 2 < lines.size) {
+                    val l2 = lines[i+2]
+                    if (!l2.contains("RSD") && !l2.contains("DIN")) parts.add(l2)
+                }
+                
+                // Line 3: Municipality (user said "third one is county")
+                if (i + 3 < lines.size) {
+                    val l3 = lines[i+3]
+                    // Basic sanity check
+                    if (!l3.contains("RSD") && !l3.contains("DIN") && !l3.matches(Regex(".*\\d{2}\\.\\d{2}\\.\\d{4}.*"))) {
+                        parts.add(l3)
+                    }
+                }
+                
+                if (parts.isNotEmpty()) {
+                    address = parts.joinToString(", ")
+                    break
+                }
+            }
+        }
+        
+        // Transliterate and normalize (Telekom uses Title Case preference too)
+        return normalizeText(name) to address?.let { normalizeText(SerbianGrammarUtils.transliterateCyrillicToLatin(it).uppercase()) }
     }
 
     /**
@@ -352,24 +428,29 @@ object ReceiptParser {
         
         android.util.Log.d("ReceiptParser", "INFOSTAN: Final - Name: $name, Addr: $address, Mun: $opstina")
 
-        // DE-DUPLICATION (Safety) - COMMENTED OUT FOR DEBUGGING
-        // This might be aggressively deleting the address if it thinks it matches the name.
-        /*
-        name?.let { n ->
-            address = address?.removePrefix(n)?.trim()
-            opstina = opstina?.removePrefix(n)?.trim()
+        // DE-DUPLICATION: Remove Name from Opstina if possibly merged
+        if (!name.isNullOrBlank() && !opstina.isNullOrBlank()) {
+            val normalizedName = normalizeText(name) ?: ""
+            val normalizedOpstina = normalizeText(opstina) ?: ""
+            // Simple containment check (case insensitive)
+            if (opstina.contains(name, ignoreCase = true)) {
+                opstina = opstina?.replace(name, "", ignoreCase = true)?.trim()
+            }
+            // Also try removing common mis-scans or partials if the name is long enough
+            if (name.length > 5) {
+                // Remove similar looking strings or if name is just prepended
+                 opstina = opstina?.replace(Regex("(?i)^${Regex.escape(name)}"), "")?.trim()
+            }
         }
-        */
 
-        // FORMAT OUTPUT: "Adresa: [Addr], Opština: [Opstina]"
-        // User said: "address should be first to be displayed"
+        // FORMAT OUTPUT: "[Addr], [Opstina]" (No "Adresa:" labels)
         val finalParts = mutableListOf<String>()
-        address?.takeIf { it.isNotBlank() }?.let { finalParts.add("Adresa: $it") }
-        opstina?.takeIf { it.isNotBlank() }?.let { finalParts.add("Opština: $it") }
+        address?.takeIf { it.isNotBlank() && !it.startsWith("ADRESA: DEBUG") }?.let { finalParts.add(it) }
+        opstina?.takeIf { it.isNotBlank() }?.let { finalParts.add(it) }
 
         val finalAddressString = if (finalParts.isNotEmpty()) finalParts.joinToString(", ") else null
         
-        return normalizeText(name) to finalAddressString
+        return normalizeText(name) to finalAddressString?.let { normalizeText(SerbianGrammarUtils.transliterateCyrillicToLatin(it).uppercase()) }
     }
 
     private fun findNameAbove(lines: List<String>, addressIndex: Int): String? {
