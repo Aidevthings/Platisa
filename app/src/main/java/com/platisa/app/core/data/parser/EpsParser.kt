@@ -220,98 +220,14 @@ object EpsParser {
         )
         
         return line.map { char ->
-            charMap[char] ?: char
+        charMap[char] ?: char
         }.joinToString("")
     }
 
     private fun extractRecipientInfo(text: String): Pair<String?, String?> {
-        val lines = text.lines().map { it.trim() }.filter { it.isNotEmpty() }
-        
-        var name: String? = null
-        var address: String? = null
-
-        // 1. SPECIFIC KEYWORDS (Priority)
-        // User requested: "Adresa korisnika", "Adresa mernog mesta", "Opstina"
-        val addressKeywords = listOf(
-            "Adresa mernog mesta", "Адреса мерног места",
-            "Adresa korisnika", "Адреса корисника",
-            "Adresa objekta", "Адреса објекта"
-        )
-        
-        for (i in lines.indices) {
-            val line = lines[i]
-            val keywordMatch = addressKeywords.find { line.contains(it, ignoreCase = true) }
-            if (keywordMatch != null) {
-                // Address is usually after the keyword or on the next line
-                val candidate = line.substringAfter(keywordMatch).trim().removePrefix(":").trim()
-                if (isValidAddress(candidate)) {
-                    address = cleanAddress(candidate)
-                    // MULTI-LINE SUPPORT: Check if next line is also part of the address
-                    if (i < lines.size - 1 && isValidSubsequentAddressLine(lines[i+1])) {
-                        address = (address ?: "") + ", ${lines[i+1]}"
-                    }
-                    if (name == null && i > 0) name = findNameAbove(lines, i)
-                    break
-                } else if (i < lines.size - 1) {
-                    val nextLine = lines[i+1]
-                    if (isValidAddress(nextLine)) {
-                        address = cleanAddress(nextLine)
-                        // MULTI-LINE SUPPORT: Check if row after that is also part of the address
-                        if (i < lines.size - 2 && isValidSubsequentAddressLine(lines[i+2])) {
-                            address = (address ?: "") + ", ${lines[i+2]}"
-                        }
-                        if (name == null && i > 0) name = findNameAbove(lines, i)
-                        break
-                    }
-                }
-            }
-        }
-
-        // 2. Opstina/Opština Keyword
-        if (address == null) {
-            val opstinaKeywords = listOf("Opstina", "Opština", "Општина")
-            for (i in lines.indices) {
-                val line = lines[i]
-                if (opstinaKeywords.any { line.contains(it, ignoreCase = true) }) {
-                    // Check line ABOVE opstina for street
-                    if (i > 0 && isValidAddress(lines[i-1])) {
-                        address = "${lines[i-1]}, $line"
-                        if (name == null && i > 1) name = findNameAbove(lines, i - 1)
-                        break
-                    }
-                }
-            }
-        }
-
-        // 3. Fallback: Standard Anchors (Korisnik, Kupac)
-        if (name == null || address == null) {
-            val anchors = listOf("KUPAC:", "КОРИСНИК:", "Korisnik:", "PRIMALAC:", "ПОТРОШАЧ:", "Potrošač:", "PLATILAC:", "ПЛАТИЛАЦ:")
-            for (i in lines.indices) {
-                val line = lines[i]
-                for (anchor in anchors) {
-                    if (line.contains(anchor, ignoreCase = true)) {
-                        val candidateName = line.substringAfter(anchor).trim()
-                        if (isValidName(candidateName)) name = candidateName
-                        
-                        // Look for address below
-                        if (address == null && i < lines.size - 1) {
-                            val candidateAddr = lines[i+1]
-                            if (isValidAddress(candidateAddr)) {
-                                address = cleanAddress(candidateAddr)
-                                // Check for second row of address
-                                if (i < lines.size - 2 && isValidSubsequentAddressLine(lines[i+2])) {
-                                    address = (address ?: "") + ", ${lines[i+2]}"
-                                }
-                                break
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        return com.platisa.app.core.domain.parser.ReceiptParser.normalizeText(name?.takeIf { it.isNotBlank() }) to 
-               com.platisa.app.core.domain.parser.ReceiptParser.normalizeText(address?.takeIf { it.isNotBlank() })
+        // SAFETY: Return null for address to prevent hijacking non-EPS bills (Infostan).
+        // The main ReceiptParser should handle address extraction.
+        return null to null
     }
 
     private fun findNameAbove(lines: List<String>, addressIndex: Int): String? {
@@ -784,4 +700,6 @@ object EpsParser {
         return null
     }
 }
+
+
 

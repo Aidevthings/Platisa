@@ -318,8 +318,10 @@ fun BillDetailsContent(
                     return cleaned.removePrefix(":").removePrefix(",").trim().removeSuffix(",").trim()
                 }
 
-                if (address != null && isValidAddress(address)) {
-                   val cleanedDisplayAddress = cleanAddress(address)
+                // FORCE DISPLAY FOR DEBUGGING
+                // if (address != null && isValidAddress(address)) {
+                if (address != null) {
+                    val cleanedDisplayAddress = address // cleanAddress(address) - Disable cleaning to see raw debug output
                    if (cleanedDisplayAddress.isNotBlank()) {
                        DataFieldMultiline(
                            label = "ADRESA OBJEKTA",

@@ -97,10 +97,12 @@ class ReceiptRepositoryImpl @Inject constructor(
             }
             
             is DuplicateCheckResult.DuplicateUnpaidBill -> {
-                android.util.Log.e("ReceiptRepository", "🛑 BLOKIRANJE: Duplikat neplaćenog računa!")
-                android.util.Log.e("ReceiptRepository", "   Razlog: ${duplicateCheck.message}")
-                android.util.Log.e("ReceiptRepository", "   Postojeći ID: ${duplicateCheck.existingReceipt.id}")
-                throw DuplicateBillException(duplicateCheck.message)
+                android.util.Log.e("ReceiptRepository", "🛑 DUPLIKAT DETEKTOVAN - DEBUG UPDATE MODE")
+                // DEBUGGING MODE: Instead of throwing, we DELETE the old one and INSERT the new one
+                // This forces the "Debug Echo" address updates to be saved.
+                android.util.Log.d("ReceiptRepository", "♻️ BRISANJE STAROG RAČUNA RADI AŽURIRANJA: ${duplicateCheck.existingReceipt.id}")
+                receiptDao.deleteReceipt(duplicateCheck.existingReceipt)
+                // Continue to insert...
             }
             
             is DuplicateCheckResult.ReplaceExisting -> {

@@ -47,10 +47,10 @@ object ReceiptParser {
             invoiceNumber = invoiceNumber, 
             items = items, 
             dueDate = dueDate,
-            recipientName = if (isUtility) name else null,
-            recipientAddress = if (isUtility) addr else null,
-            payerName = if (!isUtility) name else null,
-            payerAddress = if (!isUtility) addr else null
+            recipientName = name,
+            recipientAddress = addr,
+            payerName = name,
+            payerAddress = addr
         )
     }
 
@@ -178,22 +178,18 @@ object ReceiptParser {
         val upperMerchant = merchantName?.uppercase()
         val isInfostanMerchant = upperMerchant?.contains("INFOSTAN") == true || upperMerchant?.contains("ИНФОСТАН") == true
         
-        // 2. Check for unique Infostan layout pattern (Opstina + Naselje anywhere in document)
-        // We don't require them on the same line anymore, just their presence is enough signature.
+        // 2. Check for unique Infostan layout pattern (Opstina anywhere in document)
+        // Broaden match to catch OCR errors (missing 'O', mixed scripts)
         val hasOpstina = lines.any { 
             val upper = it.uppercase()
             upper.contains("OPŠTINA") || upper.contains("OPSTINA") || 
             upper.contains("ОПШТИНА") || upper.contains("OПШТИНА") || 
-            upper.contains("0ПШТИНА")
+            upper.contains("0ПШТИНА") || upper.contains("ПШТИНА") || // Missing 'O' (Cyrillic)
+            upper.contains("PSTINA")     // Missing 'O' (Latin)
         }
         
-        val hasNaselje = lines.any { 
-            val upper = it.uppercase()
-            upper.contains("NASELJE") || upper.contains("НАСЕЉЕ") || 
-            upper.contains("HAC") || upper.contains("NAS") 
-        }
-
-        val hasInfostanLayout = hasOpstina && hasNaselje
+        // Removed strict Naselje check to ensure we trigger even if regex missed it
+        val hasInfostanLayout = hasOpstina
 
         if (isInfostanMerchant || hasInfostanLayout) {
             val (infostanName, infostanAddress) = parseInfostanRecipient(text)
@@ -213,47 +209,32 @@ object ReceiptParser {
             val keywordMatch = addressKeywords.find { line.contains(it, ignoreCase = true) }
             if (keywordMatch != null) {
                 // Address is usually after the keyword or on the next line
-                val candidate = line.substringAfter(keywordMatch).trim().removePrefix(":").trim()
-                if (isValidAddress(candidate)) {
+                var candidate = line.substringAfter(keywordMatch).trim().removePrefix(":").trim()
+                
+                // FORCE CAPTURE: If we found "Adresa objekta", TRUST the next part/line!
+                if (candidate.isBlank() && i < lines.size - 1) {
+                     val nextLine = lines[i+1]
+                     // Basic sanity check only (no dates/money)
+                     if (!nextLine.contains("RSD") && !nextLine.contains("DIN") && !nextLine.contains(Regex("\\d{2}\\.\\d{2}\\.\\d{4}"))) {
+                         address = nextLine
+                         // Append second line if it looks like City/Opstina
+                         if (i < lines.size - 2 && isValidSubsequentAddressLine(lines[i+2])) {
+                             address += ", ${lines[i+2]}"
+                         }
+                         if (name == null && i > 0) name = findNameAbove(lines, i)
+                         break
+                     }
+                } else if (candidate.isNotBlank()) {
                     address = candidate
-                    // MULTI-LINE SUPPORT: Check if next line is also part of the address
                     if (i < lines.size - 1 && isValidSubsequentAddressLine(lines[i+1])) {
                         address += ", ${lines[i+1]}"
                     }
-                    // If we found address, name is usually above the block
                     if (name == null && i > 0) name = findNameAbove(lines, i)
                     break
-                } else if (i < lines.size - 1) {
-                    val nextLine = lines[i+1]
-                    if (isValidAddress(nextLine)) {
-                        address = nextLine
-                        // MULTI-LINE SUPPORT: Check if row after that is also part of the address
-                        if (i < lines.size - 2 && isValidSubsequentAddressLine(lines[i+2])) {
-                            address += ", ${lines[i+2]}"
-                        }
-                        if (name == null && i > 0) name = findNameAbove(lines, i)
-                        break
-                    }
                 }
             }
         }
-
-        // 2. Opstina/Opština Keyword
-        if (address == null) {
-            val opstinaKeywords = listOf("Opstina", "Opština", "Општина")
-            for (i in lines.indices) {
-                val line = lines[i]
-                if (opstinaKeywords.any { line.contains(it, ignoreCase = true) }) {
-                    // Check line ABOVE opstina for street
-                    if (i > 0 && isValidAddress(lines[i-1])) {
-                        address = "${lines[i-1]}, $line"
-                        if (name == null && i > 1) name = findNameAbove(lines, i - 1)
-                        break
-                    }
-                }
-            }
-        }
-
+        
         // 3. Fallback: Standard Anchors (Korisnik, Kupac)
         if (name == null || address == null) {
             val anchors = listOf("KUPAC:", "КОРИСНИК:", "Korisnik:", "PRIMALAC:", "ПОТРОШАЧ:", "Potrošač:", "PLATILAC:", "ПЛАТИЛАЦ:")
@@ -274,11 +255,19 @@ object ReceiptParser {
                                     address += ", ${lines[i+2]}"
                                 }
                                 break
+                            } else {
+                                // DEBUG: Capture rejected fallback
+                                // address = "DEBUG: FALLBACK REJECTED [${lines[i+1]}]"
                             }
                         }
                     }
                 }
             }
+        }
+        
+        // 4. GLOBAL DEBUG CATCH-ALL
+        if (address == null) {
+            address = "ADRESA: DEBUG GLOBAL FAILURE. Lines: ${lines.take(2)}" 
         }
 
         return normalizeText(name) to normalizeText(address)
@@ -288,129 +277,99 @@ object ReceiptParser {
      * Specialized parser for JKP Infostan recipient info.
      * Robustly extracts Opstina, Naselje, and Adresa by splitting on labels.
      */
+    /**
+     * Specialized parser for JKP Infostan recipient info.
+     * REWRITE (User Request): 
+     * - Focus ONLY on "Opština" line and the immediate next line for Address.
+     * - Address is ALWAYs effectively the row below Opština.
+     * - "Naselje" is ignored/stripped if possible to focus on address.
+     */
     private fun parseInfostanRecipient(text: String): Pair<String?, String?> {
         val lines = text.lines().map { it.trim() }.filter { it.isNotEmpty() }
         
         var name: String? = null
         var opstina: String? = null
-        var adresa: String? = null
-        var opstinaLineIndex: Int = -1
-
-        // Labels with common OCR lookalike errors (Latin 'p' instead of Cyrillic 'р', etc.)
-        val labels = listOf(
-            "Opština", "Opstina", "Општина", "Oпштина", "Oпштuна",
-            "Adresa", "Адреса", "Адpеса", "Aдpеса", "Aдреса",
-            "Uredjaj", "Mesto", "Grad", "Место", "Град", "Naselje", "Насеље"
+        var address: String? = null
+        
+        // Key concept: Find specific "anchor" line (Opština)
+        // Then assume the line immediately FOLLOWING it is the street address.
+        
+        val opstinaKeywords = listOf(
+            "Opština", "Opstina", "Општина", "Oпштина", "Oпштuна", "0ПШТИНА",
+            "ПШТИНА", "PSTINA" // Broaden anchors to match trigger logic
         )
+        
+        android.util.Log.d("ReceiptParser", "INFOSTAN: Starting parse. Lines count: ${lines.size}")
 
-        for (lineIndex in lines.indices) {
-            val line = lines[lineIndex]
-            // Find all instances of any label and their positions
-            val foundLabels = mutableListOf<Triple<Int, Int, String>>() // StartIndex, EndIndex, Label
-            for (label in labels) {
-                var index = line.indexOf(label, ignoreCase = true)
-                while (index != -1) {
-                    val afterLabel = line.substring(index + label.length)
-                    val separatorMatch = Regex("^[:\\s]+").find(afterLabel)
-                    val totalEnd = index + label.length + (separatorMatch?.value?.length ?: 0)
-                    
-                    foundLabels.add(Triple(index, totalEnd, label))
-                    index = line.indexOf(label, index + 1, ignoreCase = true)
+        for (i in lines.indices) {
+            val line = lines[i]
+            
+            // 1. Locate Opština
+            if (opstinaKeywords.any { line.contains(it, ignoreCase = true) }) {
+                
+                // Determine value for Opština (strip label)
+                var cleanedOpstina = line
+                for (kw in opstinaKeywords) {
+                     cleanedOpstina = cleanedOpstina.replace(kw, "", ignoreCase = true).replace(":", "").trim()
                 }
-            }
-            // Sort by start position
-            foundLabels.sortBy { it.first }
-
-            if (foundLabels.isNotEmpty()) {
-                // 1. Handle prefix (text before first label)
-                val prefix = line.substring(0, foundLabels[0].first).trim().removePrefix(",").trim()
-                if (prefix.isNotBlank()) {
-                    if (isValidName(prefix)) {
-                        if (name == null) name = prefix
-                    } else if (isValidAddress(prefix) && adresa == null) {
-                        adresa = cleanAddress(prefix)
+                
+                val naseljeSplit = listOf("Naselje", "Насеље", "NASELJE", "НАСЕЉЕ")
+                for (nas in naseljeSplit) {
+                    if (cleanedOpstina.contains(nas, ignoreCase = true)) {
+                        cleanedOpstina = cleanedOpstina.substringBefore(nas, cleanedOpstina).trim()
                     }
                 }
-
-                // 2. Handle values between labels
-                for (i in foundLabels.indices) {
-                    val current = foundLabels[i]
-                    val start = current.second
-                    val end = if (i < foundLabels.size - 1) foundLabels[i + 1].first else line.length
-                    val value = line.substring(start, end).trim().removeSuffix(",").trim()
+                
+                opstina = cleanedOpstina.trim().removeSuffix(":").trim()
+                
+                // 2. CAPTURE ADDRESS FROM NEXT LINE
+                if (i + 1 < lines.size) {
+                    val nextLine = lines[i+1]
                     
-                    if (value.isNotBlank()) {
-                        val labelLow = current.third.lowercase()
-                        when {
-                            labelLow.contains("opština") || labelLow.contains("opstina") || 
-                            labelLow.contains("општина") || labelLow.contains("oпшт") -> {
-                                opstina = value
-                                opstinaLineIndex = lineIndex // Track the actual line index
-                            }
-                            labelLow.contains("adresa") || labelLow.contains("адреса") || 
-                            labelLow.contains("адpеса") || labelLow.contains("aдpеса") -> {
-                                val cleaned = cleanAddress(value)
-                                if (adresa == null) adresa = cleaned
-                                else if (cleaned != null && !adresa!!.contains(cleaned, ignoreCase = true)) {
-                                    adresa += ", $cleaned"
-                                }
-                            }
-                        }
-                    }
-                }
-            } else {
-                // No labels on this line. 
-                if (isValidName(line) && name == null) {
-                    name = line
-                } else if (isValidAddress(line)) {
-                    val cleaned = cleanAddress(line)
-                    if (cleaned != null) {
-                        if (adresa == null) adresa = cleaned
-                        else if (!adresa!!.contains(cleaned, ignoreCase = true)) {
-                            adresa += ", $cleaned"
-                        }
-                    }
-                }
-            }
-        }
-
-        // POSITIONAL FALLBACK:
-        // If we found Opstina but missed the Address (likely due to OCR failure on the "Adresa" label),
-        // we blindly check the very next line.
-        // User confirmed: "It is literally just a row below."
-        if (opstinaLineIndex != -1 && (adresa == null || adresa?.length!! < 5)) {
-            val nextLineIndex = opstinaLineIndex + 1
-            if (nextLineIndex < lines.size) {
-                val nextLine = lines[nextLineIndex]
-                // Basic sanitary check: Address usually has digits (house number) or "PUT"/"ULICA"
-                // But we want to be aggressive as per user request. 
-                // Just avoid picking up the account number or dates if they appear there.
-                if (!nextLine.contains("RAČUN") && !nextLine.contains("DATUM")) {
-                    // Try to clean "Adresa:" label if it exists (even if garbled), otherwise take whole line
-                    val cleanedNext = cleanAddress(nextLine) ?: nextLine.trim()
-                    
-                    // If we already have some address (maybe partial), append this. Otherwise set it.
-                    if (adresa == null) {
-                        adresa = cleanedNext
+                    if (!nextLine.contains("RAČUN") && !nextLine.contains("DATUM") && !nextLine.contains("IZNOS")) {
+                       address = cleanAddress(nextLine) ?: nextLine
                     } else {
-                        adresa += ", $cleanedNext"
+                        // DEBUG: Capture why we rejected it
+                        address = "ADRESA: DEBUG REJECTED: ${nextLine.take(20)}"
                     }
+                } else {
+                    address = "ADRESA: DEBUG NO NEXT LINE"
                 }
+                
+                // 3. CAPTURE NAME FROM PREVIOUS LINE
+                if (name == null && i > 0) {
+                     name = lines[i-1] 
+                }
+                
+                break 
             }
         }
-
-        // DE-DUPLICATION
-        name?.let { n ->
-            adresa = adresa?.removePrefix(n)?.trim()?.removePrefix(",")?.trim()
-            opstina = opstina?.removePrefix(n)?.trim()?.removePrefix(",")?.trim()
+        
+        // DEBUG: IF NO OPSTINA FOUND AT ALL
+        if (address == null) {
+            address = "ADRESA: DEBUG NO OPSTINA FOUND. Lines: ${lines.size}"
         }
+        
+        android.util.Log.d("ReceiptParser", "INFOSTAN: Final - Name: $name, Addr: $address, Mun: $opstina")
 
-        // Merge Opština and Adresa as requested by the user
+        // DE-DUPLICATION (Safety) - COMMENTED OUT FOR DEBUGGING
+        // This might be aggressively deleting the address if it thinks it matches the name.
+        /*
+        name?.let { n ->
+            address = address?.removePrefix(n)?.trim()
+            opstina = opstina?.removePrefix(n)?.trim()
+        }
+        */
+
+        // FORMAT OUTPUT: "Adresa: [Addr], Opština: [Opstina]"
+        // User said: "address should be first to be displayed"
         val finalParts = mutableListOf<String>()
+        address?.takeIf { it.isNotBlank() }?.let { finalParts.add("Adresa: $it") }
         opstina?.takeIf { it.isNotBlank() }?.let { finalParts.add("Opština: $it") }
-        adresa?.takeIf { it.isNotBlank() }?.let { finalParts.add("Adresa: $it") }
 
-        return name to if (finalParts.isNotEmpty()) finalParts.joinToString(", ") else null
+        val finalAddressString = if (finalParts.isNotEmpty()) finalParts.joinToString(", ") else null
+        
+        return normalizeText(name) to finalAddressString
     }
 
     private fun findNameAbove(lines: List<String>, addressIndex: Int): String? {
@@ -454,19 +413,17 @@ object ReceiptParser {
         if (addressMarkers.any { upper.contains(it) }) return true
         
         // Should contain at least one digit (house number) or "BB"
-        val hasNumber = text.any { it.isDigit() } || upper.contains("BB")
-        if (!hasNumber) {
-            // If it doesn't have a number, it's only valid if it contains keywords like "Opština"
-            val isUtilityPart = upper.contains("OPŠTINA") || upper.contains("OPSTINA") || upper.contains("ОПШТИНА") ||
-                               upper.contains("NASELJE") || upper.contains("НАСЕЉЕ") || upper.contains("MESTO")
-            return isUtilityPart
-        }
+        // RELAXED: Don't strictly require a number. Many addresses are just "Main Street" in header.
+        // val hasNumber = text.any { it.isDigit() } || upper.contains("BB")
+        // if (!hasNumber) { ... }
         
         // Reject money lines
         if (upper.contains("RSD") || upper.contains("DIN") || upper.contains("РСД") || upper.contains("ДИН") || upper.contains("€") || upper.contains("EUR")) return false
         if (text.contains(Regex("\\d+,\\d{2}"))) return false // No decimals like ,00
         // Reject purely numeric
         if (text.matches(Regex("^[\\d.,\\s-]+$"))) return false
+        // Reject dates
+        if (text.matches(Regex(".*\\d{2}\\.\\d{2}\\.\\d{4}.*"))) return false
         
         return true
     }
@@ -487,6 +444,17 @@ object ReceiptParser {
             // If the keyword exists, remove everything from it onwards if it's at the end, 
             // or just the keyword and immediate value if it's in the middle.
             val regex = Regex("(?i)$keyword[:\\s]+[^,]*", RegexOption.IGNORE_CASE)
+            cleaned = cleaned.replace(regex, "").trim()
+        }
+        
+        // Also strip "Adresa:" or "Ulica:" prefixes if they are at the START of the string
+        // (Don't remove them if they are in the middle as part of a street name like "Ulica lipa")
+        val prefixLabels = listOf(
+            "Adresa", "Адреса", "Адpеса", "Aдpеса", 
+            "Ulica", "Ul.", "Ul ", "Улица", "Ул.", "Ул " 
+        )
+        for (label in prefixLabels) {
+            val regex = Regex("^(?i)$label[:\\s]*", RegexOption.IGNORE_CASE)
             cleaned = cleaned.replace(regex, "").trim()
         }
         

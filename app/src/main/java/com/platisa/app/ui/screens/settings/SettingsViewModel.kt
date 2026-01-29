@@ -409,9 +409,13 @@ class SettingsViewModel @Inject constructor(
                     "• Sync timestamps: RESET\n" +
                     "• Local receipts: DELETED\n" +
                     "• Cache: CLEARED\n\n" +
-                    "Ready for fresh scan!"
+                    "⏳ Starting Fresh Scan..."
                     
-                SnackbarManager.showMessage("Hard reset complete! Ready for fresh scan.")
+                SnackbarManager.showMessage("Reset complete. Starting fresh scan...")
+                
+                // AUTO-START SYNC
+                // This ensures the user gets "fresh data" immediately as requested.
+                syncNow()
                     
             } catch (e: Exception) {
                 android.util.Log.e("SettingsViewModel", "❌ HARD RESET FAILED", e)

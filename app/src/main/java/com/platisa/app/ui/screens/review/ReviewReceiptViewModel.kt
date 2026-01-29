@@ -307,9 +307,11 @@ class ReviewReceiptViewModel @Inject constructor(
                         date = date,
                         dueDate = parsed?.dueDate ?: it.dueDate,
                         qrCodeData = parsed?.qrCodeData,
-                        // Update recipient/payer info if it was missing or if we found better data
-                        recipientName = eps?.recipientName ?: parsed?.recipientName ?: it.recipientName,
-                        recipientAddress = eps?.recipientAddress ?: parsed?.recipientAddress ?: it.recipientAddress,
+                        // Update recipient/payer info
+                        // CRITICAL FIX: Prefer 'parsed' (ReceiptParser) over 'eps' (EpsParser) for Address/Name
+                        // EpsParser often grabs generic "Opstina" lines incorrectly for Infostan.
+                        recipientName = parsed?.recipientName ?: eps?.recipientName ?: it.recipientName,
+                        recipientAddress = parsed?.recipientAddress ?: eps?.recipientAddress ?: it.recipientAddress,
                         payerName = parsed?.payerName ?: it.payerName,
                         payerAddress = parsed?.payerAddress ?: it.payerAddress
                     )
@@ -329,8 +331,9 @@ class ReviewReceiptViewModel @Inject constructor(
                     savedQrUri = lastSavedQrUri,
                     paymentStatus = if (lastSavedQrUri != null) com.platisa.app.core.domain.model.PaymentStatus.PROCESSING else com.platisa.app.core.domain.model.PaymentStatus.UNPAID,
                     // CRITICAL: Save recipient and payer info!
-                    recipientName = eps?.recipientName ?: parsed?.recipientName,
-                    recipientAddress = eps?.recipientAddress ?: parsed?.recipientAddress,
+                    // FIX: Prioritize parsed (ReceiptParser) over eps (EpsParser)
+                    recipientName = parsed?.recipientName ?: eps?.recipientName,
+                    recipientAddress = parsed?.recipientAddress ?: eps?.recipientAddress,
                     payerName = parsed?.payerName,
                     payerAddress = parsed?.payerAddress
                 )
