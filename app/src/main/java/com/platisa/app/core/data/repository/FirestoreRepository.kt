@@ -3,6 +3,9 @@ package com.platisa.app.core.data.repository
 import android.util.Log
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -70,6 +73,43 @@ class FirestoreRepository @Inject constructor(
         } catch (e: Exception) {
             Log.e(TAG, "❌ Failed to fetch shared paid status: ${e.message}")
             emptyList()
+        }
+    }
+
+    /**
+     * Real-time listener for "Paid" receipts.
+     * Emits a list of External IDs whenever the collection changes.
+     */
+    fun observePaidReceipts(sourceEmail: String): Flow<List<String>> = callbackFlow {
+        if (sourceEmail.isBlank()) {
+            close()
+            return@callbackFlow
+        }
+        
+        val normalizedEmail = sourceEmail.lowercase()
+        val collectionRef = firestore.collection(COLLECTION_SHARED_RECEIPTS)
+            .document(normalizedEmail)
+            .collection(COLLECTION_RECEIPTS)
+
+        Log.d(TAG, "👀 Starting Real-time listener for: $normalizedEmail")
+        
+        val listenerRegistration = collectionRef.addSnapshotListener { snapshot, error ->
+            if (error != null) {
+                Log.e(TAG, "❌ Listen failed: ${error.message}")
+                close(error) // Close flow on error
+                return@addSnapshotListener
+            }
+
+            if (snapshot != null) {
+                val paidIds = snapshot.documents.mapNotNull { it.id }
+                Log.d(TAG, "🔔 Update received for $normalizedEmail: ${paidIds.size} paid bills")
+                trySend(paidIds)
+            }
+        }
+
+        awaitClose {
+            Log.d(TAG, "🛑 Stopping listener for: $normalizedEmail")
+            listenerRegistration.remove()
         }
     }
     /**

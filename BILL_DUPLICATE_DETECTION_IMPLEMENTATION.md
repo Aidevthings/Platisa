@@ -57,8 +57,12 @@ Gmail → SyncReceiptsUseCase → EpsParser
 Izvlači:
   - Naplatni broj: 2004158536
   - Period: 05.10.2025 - 01.11.2025
-  - Račun broj: 100014550316
   - Da li je STORNO?
+### Example: Collision Prevention
+Two bills from different months with the same account number but DIFFERENT invoice numbers should be treated as unique.
+Bill A: Račun broj `123456789012`
+Bill B: Račun broj `987654321098`
+PaymentId logic ensures they diverger even if amounts match.
   ↓
 Kreira Payment ID: "2004158536-20251005-20251101"
   ↓

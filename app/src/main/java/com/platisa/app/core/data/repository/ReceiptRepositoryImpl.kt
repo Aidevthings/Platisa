@@ -14,9 +14,11 @@ import com.platisa.app.core.domain.model.EpsData
 import com.platisa.app.core.domain.model.ProductSearchResult
 import com.platisa.app.core.domain.model.Receipt
 import com.platisa.app.core.domain.repository.ReceiptRepository
-import com.platisa.app.core.domain.SecureStorage // Added import
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 class ReceiptRepositoryImpl @Inject constructor(
@@ -71,7 +73,16 @@ class ReceiptRepositoryImpl @Inject constructor(
     }
 
     override suspend fun insertReceipt(receipt: Receipt, billingPeriod: String?): Long { // Added param
-        val entity = receipt.toEntity()
+        // Ensure External ID exists (Critical for Sync)
+        val finalReceipt = if (receipt.externalId.isNullOrBlank()) {
+             val newId = generateDeterministicId(receipt)
+             android.util.Log.d("ReceiptRepository", "⚠️ insertReceipt: Generated Deterministic ID: $newId")
+             receipt.copy(externalId = newId)
+        } else {
+             receipt
+        }
+        
+        val entity = finalReceipt.toEntity()
         
         // LOGOVANJE ZA DEBUG
         android.util.Log.d("ReceiptRepository", "=== UMETANJE RAČUNA ===")
@@ -97,6 +108,13 @@ class ReceiptRepositoryImpl @Inject constructor(
             }
             
             is DuplicateCheckResult.DuplicateUnpaidBill -> {
+                // SYSTEMIC FIX: Check if the new receipt is STORNO and we already have a regular bill.
+                // In that case, we MUST NOT follow the "Debug Update Mode" skip/delete logic.
+                if (entity.isStorno) {
+                    android.util.Log.e("ReceiptRepository", "🛑 BLOKIRANJE STORNO RAČUNA: Original već postoji.")
+                    throw DuplicateBillException(duplicateCheck.message)
+                }
+
                 android.util.Log.e("ReceiptRepository", "🛑 DUPLIKAT DETEKTOVAN - DEBUG UPDATE MODE")
                 // DEBUGGING MODE: Instead of throwing, we DELETE the old one and INSERT the new one
                 // This forces the "Debug Echo" address updates to be saved.
@@ -174,12 +192,34 @@ class ReceiptRepositoryImpl @Inject constructor(
         }
     }
 
+
+    /**
+     * Generates a deterministic ID based on receipt content.
+     * Formula: SHA-256(merchant + date + amount)
+     * This ensures that two phones parsing the same bill get the SAME ID.
+     */
+    private fun generateDeterministicId(receipt: Receipt): String {
+        val id = com.platisa.app.core.domain.util.DeterministicIdGenerator.generate(receipt)
+        android.util.Log.d("ReceiptRepository", "🔐 Generated Deterministic ID: $id")
+        return id
+    }
+
     override suspend fun updateReceipt(receipt: Receipt) {
+        // Ensure External ID exists (Critical for Sync)
+        val finalReceipt = if (receipt.externalId.isNullOrBlank()) {
+             // CHANGE: Use Deterministic ID instead of Random UUID
+             val newId = generateDeterministicId(receipt)
+             android.util.Log.d("ReceiptRepository", "⚠️ updateReceipt: Generated Deterministic ID: $newId")
+             receipt.copy(externalId = newId)
+        } else {
+             receipt
+        }
+
         // 1. Update local DB
-        receiptDao.updateReceipt(receipt.toEntity())
+        receiptDao.updateReceipt(finalReceipt.toEntity())
         
         // 2. Sync Status to Firestore
-        syncPaidStatusToCloud(receipt)
+        syncPaidStatusToCloud(finalReceipt)
     }
 
     override suspend fun deleteReceipt(receipt: Receipt) {
@@ -189,6 +229,55 @@ class ReceiptRepositoryImpl @Inject constructor(
         if (receipt.paymentStatus == com.platisa.app.core.domain.model.PaymentStatus.PAID) {
             syncPaidStatusToCloud(receipt, isPaid = false)
         }
+    }
+    
+    // Helper to repair existing IDs
+    suspend fun repairReceiptIds() {
+        android.util.Log.d("ReceiptRepository", "🔧 STARTING ID REPAIR...")
+        val allReceipts = getAllReceipts().firstOrNull() ?: emptyList()
+        var repairedCount = 0
+        
+        val receiptsToFix = allReceipts.filter { 
+            // Fix if:
+            // 1. ID is missing
+            // 2. ID looks like a random UUID
+            // 3. ID is deterministic (det_) -> FORCE RE-VALIDATE due to updated normalization logic (Cyrillic fix)
+            val id = it.externalId
+            val isMissing = id.isNullOrBlank()
+            val isRandomUuid = id != null && id.length == 36 && id.contains("-") && !id.startsWith("det_")
+            val isDeterministic = id != null && id.startsWith("det_")
+            
+            isMissing || isRandomUuid || isDeterministic
+        }
+        
+        android.util.Log.d("ReceiptRepository", "🔧 Found ${receiptsToFix.size} receipts to repair.")
+        
+        for (receipt in receiptsToFix) {
+            val newId = generateDeterministicId(receipt)
+            val isDifferent = newId != receipt.externalId
+            
+            if (isDifferent) {
+                // Determine if we should preserve PAID status during migration?
+                // Yes, if it was paid, keep it paid. Sync will handle the REST.
+                // NOTE: If we change the ID, the OLD ID on Firestore becomes orphan. That's acceptable for now.
+                
+                val updated = receipt.copy(
+                    externalId = newId,
+                    metadata = (receipt.metadata ?: "") + " [ID_REPAIRED]"
+                )
+                
+                receiptDao.updateReceipt(updated.toEntity())
+                
+                // If it was paid, re-sync under NEW ID
+                if (updated.paymentStatus == com.platisa.app.core.domain.model.PaymentStatus.PAID) {
+                    syncPaidStatusToCloud(updated, isPaid = true)
+                }
+                
+                repairedCount++
+            }
+        }
+        
+        android.util.Log.d("ReceiptRepository", "✅ REPAIR COMPLETE. Fixed $repairedCount receipts.")
     }
 
     /**
@@ -396,83 +485,77 @@ class ReceiptRepositoryImpl @Inject constructor(
         android.util.Log.d("ReceiptRepository", "✅ Gmail računi obrisani (ostali sačuvani)")
     }
 
-    override suspend fun markPastBillsAsPaid(merchantName: String, excludeReceiptId: Long) {
-        // 1. Fetch ALL unpaid bills to perform fuzzy matching in memory
-        // SQL is too strict ("Mts" != "Mts d.o.o."), so we handle it here.
-        val allReceipts = receiptDao.getAllReceiptsList()
-        val unpaidCandidates = allReceipts.filter { 
-            it.paymentStatus == com.platisa.app.core.data.database.entity.PaymentStatus.UNPAID && 
-            it.id != excludeReceiptId 
+    override suspend fun markPastBillsAsPaid(merchantName: String, excludeReceiptId: Long, currentBillDate: Long) {
+        // 1. Fetch ALL non-paid bills for fuzzy matching
+        val allPotential = receiptDao.getAllReceiptsList().filter { 
+            (it.paymentStatus == com.platisa.app.core.data.database.entity.PaymentStatus.UNPAID || 
+             it.paymentStatus == com.platisa.app.core.data.database.entity.PaymentStatus.PROCESSING) && 
+            it.id != excludeReceiptId &&
+            it.date.time < currentBillDate
         }
-
-        val matchedBills = unpaidCandidates.filter { candidate ->
-            val dbName = candidate.merchantName.lowercase().replace(" ", "").replace(".", "").replace("-", "")
-            val targetName = merchantName.lowercase().replace(" ", "").replace(".", "").replace("-", "")
-            
-            // A. Direct Fuzzy Match
-            var match = dbName.contains(targetName) || targetName.contains(dbName)
-            
-            // B. Alias Match (Critical for OCR variations)
-            if (!match) {
-                val aliases = mapOf(
-                    "mts" to listOf("telekom", "telekom srbija", "mts"),
-                    "telekom" to listOf("mts", "telekom srbija", "telekom"),
-                    "telenor" to listOf("yettel", "telenor", "mobi banka", "mobibanka"),
-                    "yettel" to listOf("telenor", "yettel", "mobi banka", "mobibanka"),
-                    "eps" to listOf("eps", "elektroprivreda", "struja", "eps distribucija", "eps snabdevanje"),
-                    "infostan" to listOf("jkp infostan", "infostan tehnologije", "infostan"),
-                    "sbb" to listOf("sbb", "serbian broadband"),
-                    "a1" to listOf("vip", "vip mobile", "a1"),
-                    "vip" to listOf("a1", "vip", "vip mobile")
-                )
-                
-                for ((key, values) in aliases) {
-                    val safeKey = key.replace(" ", "")
-                    // Check if target matches an alias Key or Value
-                    val isTargetInGroup = targetName.contains(safeKey) || values.any { targetName.contains(it.replace(" ", "")) }
-                    
-                    if (isTargetInGroup) {
-                        // If target is in this group, check if candidate is also in this group
-                        if (dbName.contains(safeKey) || values.any { dbName.contains(it.replace(" ", "")) }) {
-                            match = true
-                            break
-                        }
-                    }
-                }
-            }
-            
-            if (match) {
-                 android.util.Log.d("ReceiptRepository", "      ✅ MATCH FOUND: '${candidate.merchantName}' matches '$merchantName'")
-            }
-            match
-        }
-
+        
+        val matchedBills = findMatchingBills(merchantName, allPotential)
+        
+        android.util.Log.d("ReceiptRepository", "🔄 CASCADE: Found ${matchedBills.size} matching past bills for $merchantName")
+        
         if (matchedBills.isNotEmpty()) {
-            android.util.Log.d("ReceiptRepository", "🔄 CASCADE: Marking ${matchedBills.size} bills as PAID.")
-            
-            matchedBills.forEach { receipt ->
-                android.util.Log.d("ReceiptRepository", "   -> Updating Bill ${receipt.id} (${receipt.merchantName})")
-                val updated = receipt.copy(
-                    paymentStatus = com.platisa.app.core.data.database.entity.PaymentStatus.PAID,
-                    updatedAt = java.util.Date(),
-                    metadata = (receipt.metadata ?: "") + " [Cascaded]"
-                )
-                receiptDao.updateReceipt(updated)
-                
-                // Cloud Sync
-                syncPaidStatusToCloud(updated.toDomain(), isPaid = true)
+            matchedBills.forEach { entity ->
+               // Use the repository's updateReceipt to ensure Firestore sync!
+               val updatedDomain = entity.toDomain().copy(
+                   paymentStatus = com.platisa.app.core.domain.model.PaymentStatus.PAID,
+                   updatedAt = java.util.Date(),
+                   metadata = (entity.metadata ?: "") + " [Cascaded]"
+               )
+               updateReceipt(updatedDomain)
             }
-        } else {
-            android.util.Log.w("ReceiptRepository", "⚠️ NO MATCHING PAST BILLS found for '$merchantName'")
         }
     }
 
-
     override suspend fun isLatestReceipt(merchantName: String, receiptDate: java.util.Date): Boolean {
-        val latestDateTimestamp = receiptDao.getLatestReceiptDateForMerchant(merchantName) ?: return true
-        // If current receipt date is >= latest date in DB, it is the latest (or one of them).
-        // Using timestamp comparison
-        return receiptDate.time >= latestDateTimestamp
+       val latestDate = receiptDao.getLatestReceiptDateForMerchant(merchantName) ?: return true
+       return receiptDate.time >= latestDate
+    }
+
+    override suspend fun getUnpaidPastBillsSum(merchantName: String, beforeDate: Long): Double {
+        val unpaidPastBills = findMatchingBills(merchantName, receiptDao.getAllReceiptsList().filter { 
+            (it.paymentStatus == com.platisa.app.core.data.database.entity.PaymentStatus.UNPAID || 
+             it.paymentStatus == com.platisa.app.core.data.database.entity.PaymentStatus.PROCESSING) && 
+            it.date.time < beforeDate 
+        })
+        return unpaidPastBills.sumOf { it.totalAmount.toDouble() }
+    }
+
+    private fun findMatchingBills(
+        targetMerchant: String, 
+        candidates: List<com.platisa.app.core.data.database.entity.ReceiptEntity>
+    ): List<com.platisa.app.core.data.database.entity.ReceiptEntity> {
+        val normalizedTarget = com.platisa.app.core.utils.SerbianGrammarUtils.normalizeForSync(targetMerchant)
+        
+        val aliases = mapOf(
+            "mts" to listOf("telekom", "mts"),
+            "telekom" to listOf("mts", "telekom"),
+            "yettel" to listOf("telenor", "yettel"),
+            "telenor" to listOf("yettel", "telenor"),
+            "eps" to listOf("eps", "elektroprivreda", "snabdevanje", "distribucija"),
+            "infostan" to listOf("infostan")
+        )
+        
+        return candidates.filter { candidate ->
+            val normalizedCandidate = com.platisa.app.core.utils.SerbianGrammarUtils.normalizeForSync(candidate.merchantName)
+            
+            // 1. Direct Normalized Match
+            if (normalizedCandidate == normalizedTarget) return@filter true
+            if (normalizedCandidate.contains(normalizedTarget) || normalizedTarget.contains(normalizedCandidate)) return@filter true
+            
+            // 2. Alias Match
+            val targetAliasKey = aliases.keys.find { normalizedTarget.contains(it) }
+            if (targetAliasKey != null) {
+                val group = aliases[targetAliasKey] ?: emptyList()
+                if (group.any { normalizedCandidate.contains(it) }) return@filter true
+            }
+            
+            false
+        }
     }
 
     override suspend fun deleteAllPaidStatuses(sourceEmail: String) {
@@ -532,6 +615,84 @@ class ReceiptRepositoryImpl @Inject constructor(
         }
         
         return emptyList()
+    }
+
+    override suspend fun startRealTimeSync() {
+        android.util.Log.d("ReceiptRepository", "⚡ Starting REAL-TIME Sync...")
+        
+        val currentUserEmail = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.email?.lowercase()
+        val connected = secureStorage.getConnectedAccounts().map { it.lowercase() }
+        
+        val allAccounts = (connected + listOfNotNull(currentUserEmail)).distinct()
+        
+
+        
+        android.util.Log.d("ReceiptRepository", "⚡ Listening for updates on: $allAccounts")
+
+        // AUTO-REPAIR on Sync Start: Fixes existing bad IDs
+        try {
+            repairReceiptIds()
+        } catch (e: Exception) {
+            android.util.Log.e("ReceiptRepository", "⚠️ Auto-repair failed", e)
+        }
+
+        kotlinx.coroutines.coroutineScope {
+            // SHARED STATE: Map of Email -> Set of Paid IDs
+            val paidStateMap = java.util.concurrent.ConcurrentHashMap<String, Set<String>>()
+            // Initial empty state for all accounts
+            allAccounts.forEach { paidStateMap[it] = emptySet() }
+            
+            val updateMutex = kotlinx.coroutines.sync.Mutex()
+
+            allAccounts.forEach { email ->
+                launch {
+                    try {
+                        firestoreRepository.observePaidReceipts(email).collect { paidIds ->
+                            updateMutex.lock()
+                            try {
+                                android.util.Log.d("ReceiptRepository", "⚡ Update received for $email: ${paidIds.size} paid bills")
+                                // 1. Update State
+                                paidStateMap[email] = paidIds.toSet()
+
+                                // 2. Calculate UNION of ALL known paid bills (Global Truth)
+                                val unionPaidIds = paidStateMap.values.flatten().toSet()
+                                
+                                // 3. Mark UNION as PAID (Global Update)
+                                if (unionPaidIds.isNotEmpty()) {
+                                    receiptDao.markAsPaid(unionPaidIds.toList())
+                                }
+
+                                // 4. SAFE UNMARKING (The "Total Disaster" Fix)
+                                // We iterate through EACH source we are tracking.
+                                // For a source (e.g. Wife), we check bills in DB that are:
+                                //    - Source = Wife
+                                //    - Status = PAID
+                                //    - AND NOT PRESENT IN THE **UNION**
+                                // This means: "Wife didn't pay it, Husband didn't pay it, NO ONE paid it." -> Safe to Unmark.
+                                
+                                allAccounts.forEach { sourceEmail -> 
+                                    // Get all bills in DB that claim to be PAID and from this Source
+                                    val dbPaidIds = receiptDao.getPaidExternalIdsBySource(sourceEmail)
+                                    
+                                    // Find bills that are in DB but NOT in the Global Union
+                                    val toUnmark = dbPaidIds.filter { !unionPaidIds.contains(it) }
+                                    
+                                    if (toUnmark.isNotEmpty()) {
+                                        android.util.Log.d("ReceiptRepository", "⚡ SYNC: Safely unmarking ${toUnmark.size} bills from $sourceEmail (Not in Union)")
+                                        receiptDao.markAsUnpaidByIds(toUnmark)
+                                    }
+                                }
+                                
+                            } finally {
+                                updateMutex.unlock()
+                            }
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.e("ReceiptRepository", "⚡ Error in listener for $email", e)
+                    }
+                }
+            }
+        }
     }
 }
 

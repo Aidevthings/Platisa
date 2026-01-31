@@ -138,7 +138,8 @@ fun GaugePanel(
                 contentDescription = "Celebration Dance",
                 modifier = Modifier
                     .fillMaxSize()
-                    .scale(1.1f) // Slight zoom to ensure edge-to-edge coverage
+                    .fillMaxSize()
+                    .scale(if (customColors.isDark) 1.0f else 1.1f) // No zoom for Dark Mode, zoom for Light Mode
                     .alpha(0.9f), // Almost fully opaque for the dancing man
                 contentScale = androidx.compose.ui.layout.ContentScale.Crop // Crop ensures we fill the entire space
             )

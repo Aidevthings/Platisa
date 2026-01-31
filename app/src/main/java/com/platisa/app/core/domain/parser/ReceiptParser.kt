@@ -36,10 +36,6 @@ object ReceiptParser {
         val (name, addr) = extractRecipientInfo(text, merchant)
         val items = extractItems(text)
         
-        val isUtility = merchant?.uppercase()?.contains("INFOSTAN") == true || 
-                       merchant?.uppercase()?.contains("EPS") == true ||
-                       merchant?.contains("ELEKTROPRIVREDA", ignoreCase = true) == true
-
         return ParsedReceipt(
             merchantName = merchant, 
             date = date, 
@@ -351,10 +347,6 @@ object ReceiptParser {
 
     /**
      * Specialized parser for JKP Infostan recipient info.
-     * Robustly extracts Opstina, Naselje, and Adresa by splitting on labels.
-     */
-    /**
-     * Specialized parser for JKP Infostan recipient info.
      * REWRITE (User Request): 
      * - Focus ONLY on "Opština" line and the immediate next line for Address.
      * - Address is ALWAYs effectively the row below Opština.
@@ -430,16 +422,14 @@ object ReceiptParser {
 
         // DE-DUPLICATION: Remove Name from Opstina if possibly merged
         if (!name.isNullOrBlank() && !opstina.isNullOrBlank()) {
-            val normalizedName = normalizeText(name) ?: ""
-            val normalizedOpstina = normalizeText(opstina) ?: ""
             // Simple containment check (case insensitive)
             if (opstina.contains(name, ignoreCase = true)) {
-                opstina = opstina?.replace(name, "", ignoreCase = true)?.trim()
+                opstina = opstina.replace(name, "", ignoreCase = true).trim()
             }
             // Also try removing common mis-scans or partials if the name is long enough
             if (name.length > 5) {
                 // Remove similar looking strings or if name is just prepended
-                 opstina = opstina?.replace(Regex("(?i)^${Regex.escape(name)}"), "")?.trim()
+                 opstina = opstina.replace(Regex("(?i)^${Regex.escape(name)}"), "").trim()
             }
         }
 
@@ -577,74 +567,115 @@ object ReceiptParser {
             // Serbian LATIN - Račun broj / Broj računa (allow dashes and slashes for various formats)
             Pattern.compile("(?:Račun\\s+broj|Broj\\s+računa|Racun\\s+broj|Broj\\s+racuna)[:\\s]+([\\d/-]+)", Pattern.CASE_INSENSITIVE),
             
-            // FALLBACK: ED broj / ЕД број (for EPS bills without Račun broj visible)
-            Pattern.compile("(?:ED\\s+broj|ЕД\\s+број)[:\\s]+([\\d/-]+)", Pattern.CASE_INSENSITIVE),
-            
             // NOTE: DO NOT use Naplatni broj as fallback!
             // Naplatni broj is the meter/account number - SAME for all bills from same address
             // It should NOT be used for duplicate detection
             
             // Telekom specific patterns (both Cyrillic and Latin)
-            Pattern.compile("(?:Број\\s+рачуна)[:\\s]+(\\d+)", Pattern.CASE_INSENSITIVE),  // Cyrillic
-            Pattern.compile("(?:Broj\\s+ra\u010duna)[:\\s]+(\\d+)", Pattern.CASE_INSENSITIVE),  // Latin
-            Pattern.compile("(?:Ra\u010dun\\s+br)[:\\s\\.]+(\\d+)", Pattern.CASE_INSENSITIVE),
-            Pattern.compile("(?:Рачун\\s+бр)[:\\s\\.]+(\\d+)", Pattern.CASE_INSENSITIVE),  // Cyrillic abbreviated
-            Pattern.compile("(?:Faktura|Фактура)[:\\s]+(\\d+)", Pattern.CASE_INSENSITIVE),  // Both scripts
+            // Relaxed diacritics: c matches č/ć, s matches š, z matches ž
+            // LOGIC FIX: (\d+(?:\s*[\.-]\s*\d+)*)
+            // - Starts with digits
+            // - Continues ONLY if separated by Dash/Dot (with optional spaces)
+            // - STOPS at a bare space (column separator)
+            Pattern.compile("(?:Број\\s+рачуна)[:\\s]+(\\d+(?:\\s*[\\.-]\\s*\\d+)*)", Pattern.CASE_INSENSITIVE),  // Cyrillic
             
-            // Serbian - Poziv na broj (very common on utility bills) - BOTH scripts
-            Pattern.compile("(?:Poziv\\s+na\\s+broj|Poziv\\s+na\\s+broj\\s+plaćanja|Позив\\s+на\\s+број)[:\\s]+(\\d+)", Pattern.CASE_INSENSITIVE),
+            // "Broj računa" -> "Broj racuna"
+            Pattern.compile("(?:Broj\\s+ra[c\u010d\u0107]una)[:\\s]+(\\d+(?:\\s*[\\.-]\\s*\\d+)*)", Pattern.CASE_INSENSITIVE),
             
-            // Serbian - Broj fakture - BOTH scripts
-            Pattern.compile("(?:Broj\\s+fakture|Faktura\\s+broj|Број\\s+фактуре|Фактура\\s+број)[:\\s]+(\\d+)", Pattern.CASE_INSENSITIVE),
+            // "Račun br" -> "Racun br"
+            Pattern.compile("(?:Ra[c\u010d\u0107]un\\s+br)[:\\s\\.]+(\\d+(?:\\s*[\\.-]\\s*\\d+)*)", Pattern.CASE_INSENSITIVE),
+            Pattern.compile("(?:Рачун\\s+бр)[:\\s\\.]+(\\d+(?:\\s*[\\.-]\\s*\\d+)*)", Pattern.CASE_INSENSITIVE),
+            Pattern.compile("(?:Faktura|Фактура)[:\\s]+(\\d+(?:\\s*[\\.-]\\s*\\d+)*)", Pattern.CASE_INSENSITIVE),
             
-            // Serbian - Broj dokumenta - BOTH scripts
-            Pattern.compile("(?:Broj\\s+dokumenta|Dokument\\s+broj|Број\\s+документа|Документ\\s+број)[:\\s]+(\\d+)", Pattern.CASE_INSENSITIVE),
-            
-            // Account number (common on telecom bills)
-            Pattern.compile("(?:Account\\s+number|Acc\\s+no)[:\\s]+(\\d+)", Pattern.CASE_INSENSITIVE),
+            // Serbian - Broj fakture
+            Pattern.compile("(?:Broj\\s+fakture|Faktura\\s+broj|Број\\s+фактуре|Фактура\\s+број)[:\\s]+(\\d+(?:\\s*[\\.-]\\s*\\d+)*)", Pattern.CASE_INSENSITIVE),
             
             // English - Invoice/Bill number
-            Pattern.compile("(?:Invoice\\s+number|Bill\\s+number|Invoice\\s+no|Bill\\s+no|Invoice\\s+#)[:\\s]+(\\d+)", Pattern.CASE_INSENSITIVE),
+            Pattern.compile("(?:Invoice\\s+number|Bill\\s+number|Invoice\\s+no|Bill\\s+no|Invoice\\s+#)[:\\s]+(\\d+(?:\\s*[\\.-]\\s*\\d+)*)", Pattern.CASE_INSENSITIVE),
             
-            // English - Document number
-            Pattern.compile("(?:Document\\s+number|Doc\\s+number|Doc\\s+no)[:\\s]+(\\d+)", Pattern.CASE_INSENSITIVE),
+            // Abbreviated forms
+            Pattern.compile("(?:Ra[c\u010d\u0107]\\.\\s*br|Br\\.\\s*ra[c\u010d\u0107]una|Fakt\\.\\s*br|Рач\\.\\s*бр|Бр\\.\\с*рачуна|Факт\\.\\s*бр)[:\\s]+(\\d+(?:\\s*[\\.-]\\s*\\d+)*)", Pattern.CASE_INSENSITIVE),
             
-            // English - Reference number
-            Pattern.compile("(?:Reference\\s+number|Ref\\s+number|Reference|Ref)[:\\s]+(\\d+)", Pattern.CASE_INSENSITIVE),
+            // =====================================================================
+            // MULTI-LINE SUPPORT (Telekom Srbija Fix)
+            // =====================================================================
+            // Matches "Račun broj" followed by whitespace/newlines and then the number
+            // TOLERANT version: Matches "Račun" or "Racun", "Broj" matches "Broj"
+            Pattern.compile("(?:Ra[c\u010d\u0107]un\\s+broj|Broj\\s+ra[c\u010d\u0107]una|Рачун\\s+број|Број\\s+рачуна)[:\\s]+(\\d+(?:\\s*[\\.-]\\s*\\d+)*)", Pattern.CASE_INSENSITIVE or Pattern.MULTILINE),
             
-            // Abbreviated forms - BOTH scripts
-            Pattern.compile("(?:Ra\u010d\\.\\s*br|Br\\.\\s*ra\u010duna|Fakt\\.\\s*br|Рач\\.\\s*бр|Бр\\.\\с*рачуна|Факт\\.\\s*бр)[:\\s]+(\\d+)", Pattern.CASE_INSENSITIVE)
+            // "Račun broj" on one line, number on next (without colon)
+            Pattern.compile("(?:Ra[c\u010d\u0107]un\\s+broj|Рачун\\s+број)\\s*\\n\\s*(\\d+(?:\\s*[\\.-]\\s*\\d+)*)", Pattern.CASE_INSENSITIVE or Pattern.MULTILINE)
             
             // REMOVED: Generic fallbacks that were matching Naplatni broj instead of Račun broj:
-            // - "(?:Račun|...|Bill)[^\d]*(\d{10,})" - too generic, matches ANY number after "Račun"
-            // - "\b(\d{10,})\b" - matches ANY 10+ digit number
-            // - "(?:ID|Id)[:\s]+(\d{10,})" - too generic
+            // - "(?:Račun|...|Bill)[^\d]*(\d{5,})" - too generic
+            // - "\b(\d{5,})\b" - matches ANY number
+            // - "(?:ID|Id)[:\s]+(\d{5,})" - too generic
         )
         
-        // Only search first 30% of text for standalone numbers to avoid picking up amounts
-        val searchText = text.take((text.length * 0.3).toInt().coerceAtLeast(500))
+        // Search the ENTIRE text (some bills have information at the bottom)
+        val searchText = text
         
         for ((index, pattern) in patterns.withIndex()) {
-            val textToSearch = if (index == patterns.size - 1) searchText else text  // Last pattern only searches top
-            val matcher = pattern.matcher(textToSearch)
+            val matcher = pattern.matcher(searchText)
             if (matcher.find()) {
                 val rawNumber = matcher.group(1)?.trim()
                 if (rawNumber != null) {
-                    // Clean the number: remove dashes for storage (but keep for logging)
-                    val cleanNumber = rawNumber.replace("-", "")
+                    // Clean the number: remove dashes, dots, slashes, spaces for storage
+                    val cleanNumber = rawNumber.replace("-", "").replace(".", "").replace("/", "").replace(" ", "")
                     
-                    if (cleanNumber.length >= 7) {  // Minimum 7 digits (Telekom has 7-digit invoices)
-                        // IGNORE current year as invoice number (Infostan/EPS false positive)
+
+                    if (cleanNumber.length >= 5) {  // Minimum 5 digits
+                        // IGNORE current year as invoice number (avoid false positives)
                         val numInt = cleanNumber.toIntOrNull()
-                        if (numInt != 2025 && numInt != 2026) {
+                        val isYear = numInt != null && (numInt in 2020..2030)
+                        
+                        if (!isYear) {
                             android.util.Log.d("ReceiptParser", "✅ Found invoice number: $rawNumber (cleaned: $cleanNumber) using pattern #$index")
-                            return cleanNumber  // Return cleaned number without dashes
+                            return cleanNumber
                         }
-                    } else {
-                        android.util.Log.w("ReceiptParser", "⚠️ Found number $rawNumber but too short (${cleanNumber.length} digits, need 7+)")
                     }
                 }
             }
+        }
+        
+        
+        // 2. FALLBACK: Manual Line-by-Line Inspection (Robust for "Label \n Value" layouts)
+        // If regex failed, let's manually look for "Račun broj" on one line and numbers on the NEXT line
+        try {
+            val inspectionRegex = Regex("""(\d+(?:\s*[\\.-]\s*\d+)*)""")
+            
+            val lines = text.lines().map { it.trim() }.filter { it.isNotEmpty() }
+            for (i in 0 until lines.size - 1) {
+                val currentLine = lines[i].lowercase().replace("č", "c").replace("ć", "c")
+                
+                // Check if current line acts as a label
+                if (currentLine.contains("racun broj") || 
+                    currentLine.contains("broj racuna")) {
+                        
+                    val nextLine = lines[i+1]
+                    
+                    // Prioritize our Strict Match regex
+                    // This captures "64-290..." but STOPS at " 058..." because space matches not [\.-]
+                    val match = inspectionRegex.find(nextLine)
+                    if (match != null) {
+                        val candidate = match.value
+                        val digitCount = candidate.count { it.isDigit() }
+                        
+                        if (digitCount >= 5) {
+                            val cleanNumber = candidate.replace(Regex("[^0-9]"), "")
+                            // Avoid year-like numbers (2024, 2025) unless they are very long
+                            val isYear = cleanNumber.length == 4 && (cleanNumber.startsWith("202"))
+                            
+                            if (!isYear) {
+                                android.util.Log.d("ReceiptParser", "✅ Found invoice number via Line Inspection (Strict): '$candidate' (cleaned: $cleanNumber)")
+                                return cleanNumber
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("ReceiptParser", "Error in line inspection", e)
         }
         
         android.util.Log.w("ReceiptParser", "❌ No invoice number found in text")
@@ -784,12 +815,32 @@ object ReceiptParser {
     fun normalizeText(text: String?): String? {
         if (text == null || text.isBlank()) return text
         
-        // Ako tekst sadrži mala slova, verovatno je već normalizovan
-        if (text.any { it.isLowerCase() }) return text
-        
-        return text.split(" ").joinToString(" ") { word ->
-            word.lowercase().replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
+        // 1. Initial Normalization (Title Case if mostly upper)
+        var normalized = if (text.any { it.isLowerCase() }) {
+            text // Already has casing, assume good
+        } else {
+            // Convert ALL-CAPS to Title Case
+            text.split(" ").joinToString(" ") { word ->
+                word.lowercase().replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
+            }
         }
+        
+        // 2. Fix known abbreviations that should be UPPERCASE
+        // "Jkp Infostan" -> "JKP Infostan"
+        normalized = normalized
+        // 2. Fix known abbreviations that should be UPPERCASE (Handle optional dots)
+        // "Jkp Infostan" -> "JKP Infostan"
+        // "a.d." -> "AD", "d.o.o." -> "DOO"
+        normalized = normalized
+            .replace(Regex("(?i)\\bJ\\.?k\\.?p\\.?\\b"), "JKP")
+            .replace(Regex("(?i)\\bJ\\.?p\\.?\\b"), "JP")
+            .replace(Regex("(?i)\\bD\\.?o\\.?o\\.?\\b"), "DOO")
+            .replace(Regex("(?i)\\bA\\.?d\\.?\\b"), "AD")
+            .replace(Regex("(?i)\\bEps\\b"), "EPS")
+            .replace(Regex("(?i)\\bSbb\\b"), "SBB")
+            .replace(Regex("(?i)\\bMts\\b"), "MTS")
+            
+        return normalized
     }
 
     private fun extractDate(text: String): Date? {
@@ -815,13 +866,15 @@ object ReceiptParser {
             val formats = listOf("dd.MM.yyyy", "dd/MM/yyyy", "dd-MM-yyyy", "dd.MM.yy", "dd/MM/yy", "dd-MM-yy")
             for (format in formats) {
                 try {
-                    val date = SimpleDateFormat(format, Locale.getDefault()).parse(dateStr)
-                    if (date != null) {
-                        // Validate year to avoid noise (e.g. 2000-2030)
-                        val year = Integer.parseInt(SimpleDateFormat("yyyy", Locale.getDefault()).format(date))
-                        if (year in 2020..2030) {
-                            val line = findLineFor(matcher.start())
-                            dateCandidates.add(date to line)
+                    if (dateStr != null) {
+                        val date = SimpleDateFormat(format, Locale.getDefault()).parse(dateStr)
+                        if (date != null) {
+                            // Validate year to avoid noise (e.g. 2000-2030)
+                            val year = Integer.parseInt(SimpleDateFormat("yyyy", Locale.getDefault()).format(date))
+                            if (year in 2020..2030) {
+                                val line = findLineFor(matcher.start())
+                                dateCandidates.add(date to line)
+                            }
                         }
                     }
                 } catch (e: Exception) {
@@ -832,24 +885,38 @@ object ReceiptParser {
         
         if (dateCandidates.isEmpty()) return null
         
-        // Priority Keywords (Latin & Cyrillic)
-        val keywords = listOf(
-            "DATUM", "DANA", "IZDAT", "PROMET", "MESTO", "BEOGRAD", 
-            "ДАТУМ", "ДАНА", "ИЗДАТ", "ПРОМЕТ", "МЕСТО", "БЕОГРАД" // often "Beograd, 30.11.2025"
-        )
-        
-        // 1. Look for date on same line as keyword
-        for ((date, line) in dateCandidates) {
-            val upperLine = line.uppercase()
-            if (keywords.any { upperLine.contains(it) }) {
-                android.util.Log.d("ReceiptParser", "✅ Found Priority Date: $date in line: $line")
-                return date
-            }
+    if (dateCandidates.isEmpty()) return null
+    
+    // Priority Keywords (Latin & Cyrillic) - specifically for ISSUE dates
+    val issueKeywords = listOf(
+        "DATUM IZDAVANJA", "DANA", "IZDAT", "PROMET", "MESTO", "BEOGRAD",
+        "ДАТУМ ИЗДАВАЊА", "ДАНА", "ИЗДАТ", "ПРОМЕТ", "МЕСТО", "БЕОГРАД"
+    )
+    
+    // 1. Priority: Date on same line as "Issue" keywords
+    for ((date, line) in dateCandidates) {
+        val upperLine = line.uppercase()
+        if (issueKeywords.any { upperLine.contains(it) }) {
+            android.util.Log.d("ReceiptParser", "✅ Found Priority (Issue) Date: $date in line: $line")
+            return date
         }
-        
-        // 2. Fallback: Return the FIRST detected valid date (top of document usually)
-        return dateCandidates.first().first
     }
+    
+    // 2. Secondary: If multiple dates exist, pick the STABLE one. 
+    // Usually Issue Date is EARLIER than Due Date. 
+    // Phone A and Phone B might see dates in different OCR order, 
+    // but the set of dates is usually the same. min() is a stable choice.
+    if (dateCandidates.size > 1) {
+        val minDate = dateCandidates.minByOrNull { it.first.time }?.first
+        if (minDate != null) {
+            android.util.Log.d("ReceiptParser", "⚖️ MULTIPLE DATES: Selecting earliest (min) for stability: $minDate")
+            return minDate
+        }
+    }
+    
+    // 3. Fallback: Return the FIRST detected valid date
+    return dateCandidates.first().first
+}
 
     private fun extractDueDate(text: String): Date? {
         // Patterns for payment deadline - MUST SUPPORT BOTH LATIN AND CYRILLIC
@@ -870,7 +937,7 @@ object ReceiptParser {
         for (pattern in patterns) {
             val matcher = pattern.matcher(text)
             if (matcher.find()) {
-                val dateStr = matcher.group(1).replace(" ", "")
+                val dateStr = matcher.group(1)?.replace(" ", "") ?: continue
                 val formats = listOf("dd.MM.yyyy", "dd/MM/yyyy", "dd-MM-yyyy", "dd.MM.yy", "dd/MM/yy", "dd-MM-yy")
                 for (format in formats) {
                     try {
@@ -965,6 +1032,21 @@ object ReceiptParser {
             try {
                 val amount = BigDecimal(amountStr)
                 if (maxAmount == null || amount > maxAmount) maxAmount = amount
+            } catch (e: Exception) {}
+        }
+
+        // NEW: Serbian format with just dot separator (1.195)
+        // ONLY if there are exactly 3 digits after the dot (common for thousands)
+        val serbianThousandsPattern = Pattern.compile("\\b(\\d{1,3}(?:\\.\\d{3})+)\\b")
+        matcher = serbianThousandsPattern.matcher(line)
+        while (matcher.find()) {
+            val amountStr = matcher.group(1)?.replace(".", "") ?: continue
+            try {
+                val amount = BigDecimal(amountStr)
+                // Heuristic: If it has dots for thousands, it's likely > 1000
+                if (amount > BigDecimal(100)) {
+                    if (maxAmount == null || amount > maxAmount) maxAmount = amount
+                }
             } catch (e: Exception) {}
         }
         

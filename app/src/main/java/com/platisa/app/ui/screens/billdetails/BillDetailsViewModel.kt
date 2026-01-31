@@ -49,12 +49,45 @@ class BillDetailsViewModel @Inject constructor(
                     
                     // Load EPS data if available
                     epsDataRepository.getEpsDataByReceiptId(receiptId).collect { epsData ->
+                        
+                        // DEBT SAFETY CHECK:
+                        // Compare "Previous Debt" from the bill vs "Unpaid Local Bills".
+                        // If Bill says debt is 5000, but we only have 2000 unpaid locally, it means
+                        // we already paid 3000 separately. We should WARN the user not to pay total debt.
+                        var isDebtPartiallyPaid = false
+                        var localUnpaidSum = 0.0
+                        
+                        if (receipt.currentMonthAmount != null && receipt.totalAmount != null) {
+                             val totalAmount = receipt.totalAmount.toDouble()
+                             val currentAmount = receipt.currentMonthAmount.toDouble()
+                             val billDebt = totalAmount - currentAmount
+                             
+                             if (billDebt > 0) {
+                                 localUnpaidSum = receiptRepository.getUnpaidPastBillsSum(receipt.merchantName, receipt.date.time)
+                                 
+                                 // SMART ELASTICITY logic:
+                                 // Tolerance = 10% of total debt
+                                 val tolerance = billDebt * 0.1
+                                 
+                                 // If we have SOME local bills, but the sum is significantly LESS than Bill Debt
+                                 // It means a chunk is missing or paid separately. Risk of double payment!
+                                 // IF localUnpaidSum is 0, we simply don't have the bills scanned yet, so we don't BLOCK.
+                                 if (localUnpaidSum > 0 && localUnpaidSum < (billDebt - tolerance)) {
+                                     isDebtPartiallyPaid = true
+                                     android.util.Log.w("BillDetailsVM", "⚠️ DEBT MISMATCH: Bill Debt is $billDebt. Local Unpaid is $localUnpaidSum. Partial Payment Detected!")
+                                 }
+                             }
+                        }
+
                         _billDetails.value = BillDetailsState.Success(
                             receipt = receipt,
                             vtConsumption = epsData?.consumptionVt?.toInt() ?: 0,
                             ntConsumption = epsData?.consumptionNt?.toInt() ?: 0,
                             billType = determineBillType(receipt),
-                            isLatestForMerchant = isLatest
+                            isLatestForMerchant = isLatest,
+                            isDebtPartiallyPaid = isDebtPartiallyPaid,
+                            localUnpaidSum = localUnpaidSum,
+                            billDebt = if (receipt.totalAmount != null && receipt.currentMonthAmount != null) (receipt.totalAmount.toDouble() - receipt.currentMonthAmount.toDouble()) else 0.0
                         )
                     }
                     
@@ -162,7 +195,7 @@ class BillDetailsViewModel @Inject constructor(
                     val shouldCascade = payTotalDebt || metadataContainsFlag
                     
                     if (shouldCascade) {
-                        processCascadePayment(receipt.merchantName, receipt.id)
+                        processCascadePayment(receipt.merchantName, receipt.id, receipt.date.time)
                     }
 
                     // 3. Update status to PAID and Clear Image Paths
@@ -188,9 +221,9 @@ class BillDetailsViewModel @Inject constructor(
         }
     }
 
-    private suspend fun processCascadePayment(merchantName: String, excludeId: Long) {
+    private suspend fun processCascadePayment(merchantName: String, excludeId: Long, currentBillDate: Long) {
         try {
-            receiptRepository.markPastBillsAsPaid(merchantName, excludeId)
+            receiptRepository.markPastBillsAsPaid(merchantName, excludeId, currentBillDate)
         } catch (e: Exception) {
             android.util.Log.e("BillDetailsVM", "Failed to cascade payment", e)
         }
@@ -234,7 +267,10 @@ sealed class BillDetailsState {
         val vtConsumption: Int,
         val ntConsumption: Int,
         val billType: BillType,
-        val isLatestForMerchant: Boolean = true // Default true for compatibility
+        val isLatestForMerchant: Boolean = true,
+        val isDebtPartiallyPaid: Boolean = false,
+        val localUnpaidSum: Double = 0.0,
+        val billDebt: Double = 0.0
     ) : BillDetailsState()
     data class Error(val message: String) : BillDetailsState()
 }

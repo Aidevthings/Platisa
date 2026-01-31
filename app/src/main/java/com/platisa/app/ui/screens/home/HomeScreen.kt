@@ -859,8 +859,8 @@ fun DarkSummaryGrid(
             Image(
                 painter = rememberAsyncImagePainter(model = imageRequest),
                 contentDescription = "Slikaj QR",
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize().scale(1.05f)
+                contentScale = ContentScale.FillBounds,
+                modifier = Modifier.fillMaxSize().scale(scaleX = 1f, scaleY = 1.3f)
             )
         }
     }

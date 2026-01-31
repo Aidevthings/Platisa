@@ -102,7 +102,15 @@ class BillDuplicateDetector @Inject constructor(
             var isDuplicate = false
             var matchReason = ""
 
-            // REMOVED: Check 0 (PaymentId) - Legacy rule, replaced by Safe Check above.
+            // ============================================================
+            // PROVERA 0: External ID (Deterministic ID) - ABSOLUTE MATCH
+            // ============================================================
+            if (!receipt.externalId.isNullOrEmpty() && existing.externalId == receipt.externalId) {
+                 isDuplicate = true
+                 matchReason = "Isti Deterministic ID (${receipt.externalId})"
+                 android.util.Log.w("BillDuplicateDetector", "🎯 PROVERA 0: Deterministic ID podudaranje!")
+            }
+
             // ============================================================
             // PROVERA 1: Broj računa (normalizovan sa podrškom za ćirilicu)
             // ============================================================
@@ -133,25 +141,17 @@ class BillDuplicateDetector @Inject constructor(
     }
     
     /**
-     * Normalizuje string za poređenje.
-     * ISPRAVLJENO: Sada uključuje ćirilična slova (srpska: А-Яа-я + specijalna slova)
+     * Normalizuje string za poređenje. (Koristi jedinstvenu logiku za sinhronizaciju)
      */
     private fun normalizeString(input: String?): String {
-        if (input.isNullOrEmpty()) return ""
-        
-        // Zadrži: a-z, A-Z, 0-9, Ćirilica (U+0400-U+04FF pokriva svu ćirilicu uključujući srpsku)
-        return input
-            .replace(Regex("[^a-zA-Z0-9\\u0400-\\u04FF]"), "")
-            .lowercase()
+        return com.platisa.app.core.utils.SerbianGrammarUtils.normalizeForSync(input)
     }
     
     /**
-     * Normalizuje ime trgovca za poređenje.
+     * Normalizuje ime trgovca za poređenje. (Koristi jedinstvenu logiku za sinhronizaciju)
      */
     private fun normalizeMerchant(name: String): String {
-        return name
-            .lowercase()
-            .replace(Regex("[^a-zA-Z0-9\\u0400-\\u04FF]"), "")
+        return com.platisa.app.core.utils.SerbianGrammarUtils.normalizeForSync(name)
     }
     
     /**
@@ -164,43 +164,28 @@ class BillDuplicateDetector @Inject constructor(
     ): DuplicateCheckResult {
         android.util.Log.w("BillDuplicateDetector", "EVALUACIJA ${existingReceipts.size} duplikata po kriterijumu: $matchedBy")
         
+        val newScore = calculateScore(newReceipt)
+        android.util.Log.d("BillDuplicateDetector", "📊 Kvalitet NOVOG skena: $newScore (isStorno=${newReceipt.isStorno})")
+
         existingReceipts.forEachIndexed { index, existing ->
-            android.util.Log.w("BillDuplicateDetector", "  [$index] ID=${existing.id}, Račun=${existing.invoiceNumber}, Status=${existing.paymentStatus}, STORNO=${existing.isStorno}")
+            val existingScore = calculateScore(existing)
+            android.util.Log.w("BillDuplicateDetector", "  [$index] ID=${existing.id}, Račun=${existing.invoiceNumber}, Status=${existing.paymentStatus}, STORNO=${existing.isStorno}, SCORE=$existingScore")
         }
         
-        // SCENARIO 1: Novi račun je STORNO
+        // SCENARIO 1: Novi račun je STORNO (Sistematski inferioran)
         if (newReceipt.isStorno) {
-            val paidReceipt = existingReceipts.find { it.paymentStatus == PaymentStatus.PAID }
-            if (paidReceipt != null) {
-                android.util.Log.w("BillDuplicateDetector", "⛔ STORNO za već plaćen račun - blokiranje!")
-                return DuplicateCheckResult.StornoPaidBill(
-                    existingReceipt = paidReceipt,
-                    message = "STORNO za već plaćen račun!",
-                    shouldBlock = true,
-                    shouldHide = true
-                )
-            }
-            
-            // NOVO: Blokiraj STORNO ako postoji bilo koji račun za isti period
-            // Ne treba nam STORNO kopija ako već imamo originalni račun
-            val existingForSamePeriod = existingReceipts.firstOrNull()
-            if (existingForSamePeriod != null) {
-                android.util.Log.w("BillDuplicateDetector", "🚫 STORNO račun blokiran - originalni račun već postoji (ID=${existingForSamePeriod.id})")
+            val anyRegularReceipt = existingReceipts.find { !it.isStorno }
+            if (anyRegularReceipt != null) {
+                android.util.Log.w("BillDuplicateDetector", "🚫 STORNO račun blokiran - originalni regularni račun već postoji.")
                 return DuplicateCheckResult.DuplicateUnpaidBill(
-                    existingReceipt = existingForSamePeriod,
-                    message = "STORNO račun - originalni račun već postoji",
+                    existingReceipt = anyRegularReceipt,
+                    message = "STORNO račun preskočen jer original već postoji",
                     shouldWarn = false
                 )
             }
-            
-            // Ako nema originalnog računa, dozvoli STORNO (redak slučaj)
-            android.util.Log.d("BillDuplicateDetector", "✓ STORNO bez originalnog računa - dozvoljeno")
-            return DuplicateCheckResult.NoDuplicate
         }
         
-        // SCENARIO 2: Novi račun je regularan (nije STORNO)
-        
-        // Proveri da li već postoji PLAĆENA verzija
+        // SCENARIO 2: Provera PLAĆENIH računa
         val paidReceipt = existingReceipts.find { it.paymentStatus == PaymentStatus.PAID }
         if (paidReceipt != null) {
             android.util.Log.w("BillDuplicateDetector", "🛑 Duplikat plaćenog računa - blokiranje!")
@@ -212,10 +197,34 @@ class BillDuplicateDetector @Inject constructor(
             )
         }
         
-        // Proveri duplikat NEPLAĆENOG regularnog računa (nije STORNO)
-        val regularUnpaidReceipt = existingReceipts.find { !it.isStorno && it.paymentStatus != PaymentStatus.PAID }
+        // SCENARIO 3: Kvalitativno poređenje (Survival of the Fittest)
+        // Ako novi račun ima bolji ili jednak skor od postojećeg, dozvoljavamo zamenu.
+        // Npr. ako smo imali STORNO, a sad imamo Regularni -> Zameni.
+        // Npr. ako smo imali OCR bez QR-a, a sad imamo QR -> Zameni.
+        val bestExisting = existingReceipts.maxByOrNull { calculateScore(it) }
+        if (bestExisting != null) {
+            val existingScore = calculateScore(bestExisting)
+            
+            if (newScore > existingScore) {
+                android.util.Log.w("BillDuplicateDetector", "♻️ KVALITATIVNA ZAMENA: Novi sken ($newScore) je bolji od starog ($existingScore)")
+                return DuplicateCheckResult.ReplaceExisting(
+                    existingReceipt = bestExisting,
+                    message = "Zamenjujem lošiji sken ($existingScore) sa boljim ($newScore)"
+                )
+            } else if (newScore < existingScore) {
+                android.util.Log.w("BillDuplicateDetector", "🚫 BLOKIRANJE: Novi sken ($newScore) je lošiji od postojećeg ($existingScore)")
+                return DuplicateCheckResult.DuplicateUnpaidBill(
+                    existingReceipt = bestExisting,
+                    message = "Lošiji sken preskočen",
+                    shouldWarn = false
+                )
+            }
+        }
+
+        // SCENARIO 4: Identičan kvalitet - standardno blokiranje duplikata
+        val regularUnpaidReceipt = existingReceipts.firstOrNull()
         if (regularUnpaidReceipt != null) {
-            android.util.Log.w("BillDuplicateDetector", "🛑 Duplikat neplaćenog računa - blokiranje!")
+            android.util.Log.w("BillDuplicateDetector", "🛑 Identičan duplikat - blokiranje!")
             return DuplicateCheckResult.DuplicateUnpaidBill(
                 existingReceipt = regularUnpaidReceipt,
                 message = "Duplikat računa! ($matchedBy)",
@@ -223,20 +232,38 @@ class BillDuplicateDetector @Inject constructor(
             )
         }
         
-        // Proveri postojeći STORNO - ako imamo STORNO a sada dobijamo regularan,
-        // Korisnik smatra STORNO duplikatom koji treba zameniti ORIGINALOM.
-        val stornoReceipt = existingReceipts.find { it.isStorno }
-        if (stornoReceipt != null) {
-            android.util.Log.w("BillDuplicateDetector", "♻️ ZAMENA: Pronađen STORNO, menjam ga sa Originalnim računom")
-            return DuplicateCheckResult.ReplaceExisting(
-                existingReceipt = stornoReceipt,
-                message = "Zamenjujem STORNO ($matchedBy) sa Originalom"
-            )
-        }
-        
         return DuplicateCheckResult.NoDuplicate
     }
     
+    /**
+     * Izračunava "skor kvaliteta" računa na osnovu dostupnih podataka.
+     * Viši skor znači pouzdaniji račun.
+     */
+    private fun calculateScore(receipt: ReceiptEntity): Int {
+        var score = 0
+        
+        // 1. Platni status (Najbitnije)
+        if (receipt.paymentStatus == PaymentStatus.PAID) score += 100
+        
+        // 2. Tip računa (Regularni > Storno)
+        if (!receipt.isStorno) score += 40
+        
+        // 3. QR kôd (Visoka pouzdanost)
+        if (!receipt.qrCodeData.isNullOrBlank()) score += 30
+        
+        // 4. Broj računa (Postojanje i validnost)
+        if (!receipt.invoiceNumber.isNullOrBlank()) {
+            score += 10
+            // Ako je broj dugačak (pravi EPS broj), dodaj još poena
+            if (receipt.invoiceNumber!!.length >= 8) score += 10
+        }
+        
+        // 5. Payment ID (Kompletiran EPS podatak)
+        if (!receipt.paymentId.isNullOrBlank()) score += 10
+        
+        return score
+    }
+
     /**
      * Priprema račun za čuvanje - automatski sakriva STORNO račune.
      */

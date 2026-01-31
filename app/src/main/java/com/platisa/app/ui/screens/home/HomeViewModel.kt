@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
@@ -187,6 +188,11 @@ class HomeViewModel @Inject constructor(
     init {
         checkConnectedAccount()
         fetchLiveRate()
+        
+        // Start Real-time Sync for Shared Bills
+        viewModelScope.launch {
+            repository.startRealTimeSync()
+        }
     }
 
     private fun fetchLiveRate() {
@@ -243,7 +249,7 @@ class HomeViewModel @Inject constructor(
                 
                 if (metadataContainsFlag) {
                     try {
-                        repository.markPastBillsAsPaid(it.merchantName, it.id)
+                        repository.markPastBillsAsPaid(it.merchantName, it.id, it.date.time)
                     } catch (e: Exception) {
                         android.util.Log.e("HomeViewModel", "CASCADE PAYMENT failed: ${e.message}", e)
                     }

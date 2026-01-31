@@ -106,4 +106,33 @@ object SerbianGrammarUtils {
         }
         return sb.toString()
     }
+
+    /**
+     * Aggressively normalizes a string for matching and ID generation.
+     * Handles Cyrillic -> Latin, Accent stripping, Lowercase, and Noise removal.
+     */
+    fun normalizeForSync(input: String?): String {
+        if (input.isNullOrBlank()) return ""
+        
+        // 1. Transliterate Cyrillic to Latin
+        var result = transliterateCyrillicToLatin(input).lowercase()
+        
+        // 2. Strip ALL non-alphanumeric characters FIRST (Alpha-First)
+        // This handles "A.D.", "A. D.", "A-D" etc by turning them all into "ad"
+        result = result.replace(Regex("[^a-z0-9]"), "")
+            .replace("đ", "d").replace("ž", "z").replace("ć", "c")
+            .replace("č", "c").replace("š", "s")
+            
+        // 3. Remove common Noise words (Serbian & English)
+        // Note: Noise words must be in their clean, alphanumeric form now.
+        val noise = listOf(
+            "doo", "ad", "jkp", "jp", "limited", "ltd", "beograd", 
+            "distribucija", "snabdevanje", "tehnologije", "srbija"
+        )
+        for (n in noise) {
+            result = result.replace(n, "")
+        }
+        
+        return result.trim()
+    }
 }

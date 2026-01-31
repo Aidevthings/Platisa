@@ -264,16 +264,17 @@ class ReviewReceiptViewModel @Inject constructor(
             android.util.Log.d("ReviewVM", "Invoice Number: $invoiceNumber")
             
             // Check for duplicate one more time before saving
+            // Check for duplicate one more time before saving
+            // CRITICAL FIX: If duplicate found by Invoice Number, MERGE it instead of blocking!
             if (invoiceNumber != null) {
                 val existingByInvoice = repository.getReceiptByInvoiceNumber(invoiceNumber)
                 if (existingByInvoice != null) {
-                    android.util.Log.w("ReviewVM", "DUPLICATE FOUND: Invoice $invoiceNumber already exists (ID: ${existingByInvoice.id})")
-                    android.widget.Toast.makeText(
-                        context,
-                        "Račun broj $invoiceNumber već postoji! (ID: ${existingByInvoice.id})",
-                        android.widget.Toast.LENGTH_LONG
-                    ).show()
-                    return@launchCatching
+                    android.util.Log.d("ReviewVM", "♻️ MERGE: Invoice $invoiceNumber already exists (ID: ${existingByInvoice.id}). Updating it.")
+                    // Switch to UPDATE mode
+                    existingReceiptId = existingByInvoice.id
+                    
+                    // Allow UI to know we merged
+                    android.widget.Toast.makeText(context, "Račun ažuriran (spojen sa postojećim)!", android.widget.Toast.LENGTH_SHORT).show()
                 } else {
                     android.util.Log.d("ReviewVM", "No duplicate found - OK to save")
                 }

@@ -77,7 +77,9 @@ object GeminiParser {
         val merchantName = json.optString("merchant_name").takeIf { it.isNotEmpty() }
         val dateStr = json.optString("date")
         val amount = json.optDouble("total_amount", 0.0)
-        val invoiceNumber = json.optString("invoice_number").takeIf { it.isNotEmpty() }
+        var invoiceNumber = json.optString("invoice_number").takeIf { it.isNotEmpty() }
+        
+
         val dueDateStr = json.optString("due_date")
         val recipientName = json.optString("recipient_name").takeIf { it.isNotEmpty() }
         val recipientAddress = json.optString("recipient_address").takeIf { it.isNotEmpty() }

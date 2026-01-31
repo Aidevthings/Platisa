@@ -354,7 +354,7 @@ Build a **production-grade, premium** receipt management system.
     - Only displays when invoice number was successfully extracted
     - Uses Tag icon in neon cyan color
 - **Works For All Bill Types**:
-  - ⚡ Electricity (EPS) - "Račun broj: 100014550316"
+  - ⚡ Electricity (EPS) - "Račun broj: 123456789012"
   - 💧 Water - "Poziv na broj: 987654321"
   - 📱 Phone (Telekom/Telenor/Yettel) - "Broj fakture: 123456789"
   - 🌐 Internet (SBB/Supernova) - "Invoice number: 456789123"

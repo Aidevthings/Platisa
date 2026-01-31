@@ -42,10 +42,14 @@ interface ReceiptRepository {
     suspend fun deleteGmailReceipts()
     
     // Cascade Payment
-    suspend fun markPastBillsAsPaid(merchantName: String, excludeReceiptId: Long)
+    suspend fun markPastBillsAsPaid(merchantName: String, excludeReceiptId: Long, currentBillDate: Long)
     suspend fun isLatestReceipt(merchantName: String, receiptDate: java.util.Date): Boolean
+    suspend fun getUnpaidPastBillsSum(merchantName: String, beforeDate: Long): Double
     
     // Testing / Maintenance
     suspend fun deleteAllPaidStatuses(sourceEmail: String)
+    
+    // Real-time Sync
+    suspend fun startRealTimeSync()
 }
 

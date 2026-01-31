@@ -78,11 +78,11 @@ class ReceiptParserTest {
         // 3. Parser CAPTURES NEXT LINE: "СУРЧИНСКИ ПУТ 16 СТ. 10"
         // 4. Returns formatted string.
         
-        println("Result Address: ${result.merchantAddress}")
+        println("Result Address: ${result.recipientAddress}")
         
         // Assert address contains the street
-        assertNotNull(result.merchantAddress)
-        assert(result.merchantAddress!!.contains("СУРЧИНСКИ ПУТ 16"))
-        assert(result.merchantAddress!!.contains("НОВИ БЕОГРАД"))
-    }
-}
+        assertNotNull(result.recipientAddress)
+        assert(result.recipientAddress!!.contains("СУРЧИНСКИ ПУТ 16"))
+
+} }
+

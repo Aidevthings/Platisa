@@ -5,7 +5,7 @@
 ### ✅ **Working Bills:**
 | Bill | Company | Script | Invoice Number | Status |
 |------|---------|--------|----------------|--------|
-| Račun za električnu energiju.pdf | EPS | **CYRILLIC** | `100014550316` (12 digits) | ✅ WORKS |
+| Račun za električnu energiju.pdf | EPS | **CYRILLIC** | `123456789012` (12 digits) | ✅ WORKS |
 | INV69-288-011-3045638-postproc.pdf | Telekom | LATIN | `692880113045638` (15 digits, cleaned) | ✅ NOW WORKS |
 
 ### ⚠️ **Partially Working:**
@@ -99,8 +99,8 @@ Pattern.compile("\\b(\\d{9,})\\b")
 
 ### **Bill 1: Račun za električnu energiju.pdf** ✅
 ```
-Pattern: Рачун број: 100014550316
-Extracted: 100014550316 (12 digits)
+Pattern: Рачун број: 000000000000
+Extracted: 000000000000 (12 digits)
 Status: ✅ WORKS (already worked before)
 ```
 

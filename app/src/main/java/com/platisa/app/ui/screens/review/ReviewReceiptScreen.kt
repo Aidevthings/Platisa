@@ -76,9 +76,10 @@ fun ReviewReceiptScreen(
     var showUrlDialog by remember { mutableStateOf(false) }
     var manualUrlText by remember { mutableStateOf("") }
     
-    // Local state for editing
+    // Initializers for editable fields
     val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
     var merchant by remember(parsedReceipt) { mutableStateOf(parsedReceipt?.merchantName ?: "") }
+    var invoiceNumber by remember(parsedReceipt) { mutableStateOf(parsedReceipt?.invoiceNumber ?: "") }
     
     // Format number to Serbian locale (1.234,56)
     var total by remember(parsedReceipt) { 
@@ -113,7 +114,6 @@ fun ReviewReceiptScreen(
         }
     }
 
-    BaseScreen(viewModel = viewModel) {
     BaseScreen(viewModel = viewModel) {
         Box(modifier = Modifier.fillMaxSize()) {
             com.platisa.app.ui.components.AppBackground()
@@ -169,7 +169,7 @@ fun ReviewReceiptScreen(
                                     merchant = merchant,
                                     total = total,
                                     dateStr = date,
-                                    invoiceNumber = parsedReceipt?.invoiceNumber
+                                    invoiceNumber = invoiceNumber.ifBlank { null }
                                 )
                                 navController.navigateUp()
                             },
@@ -549,16 +549,14 @@ fun ReviewReceiptScreen(
                         readOnly = isExistingReceipt
                     )
                     
-                    // Show invoice number if extracted
-                    if (parsedReceipt?.invoiceNumber != null) {
-                        Spacer(modifier = Modifier.height(16.dp))
-                        PlatisaInput(
-                            value = parsedReceipt?.invoiceNumber ?: "",
-                            onValueChange = { },
-                            label = "Ra\u010dun Broj (Invoice Number)",
-                            readOnly = true
-                        )
-                    }
+                    // Invoice Number Field (Editable)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    PlatisaInput(
+                        value = invoiceNumber,
+                        onValueChange = { if (!isExistingReceipt) invoiceNumber = it },
+                        label = "Broj Računa (Invoice Number)",
+                        readOnly = isExistingReceipt
+                    )
 
                     // ITEMS TABLE
                     if (!parsedReceipt?.items.isNullOrEmpty()) {
@@ -728,7 +726,6 @@ fun ReviewReceiptScreen(
             titleContentColor = androidx.compose.ui.graphics.Color.White,
             textContentColor = androidx.compose.ui.graphics.Color.White
         )
-    }
     }
 }
 }

@@ -8,7 +8,7 @@ import java.util.Locale
 
 object EpsParser {
 
-    fun parse(text: String): EpsData {
+    fun parse(text: String): EpsData? {
         android.util.Log.d("EpsParser", "=== POČETAK PARSIRANJA EPS RAČUNA ===")
         android.util.Log.d("EpsParser", "Dužina teksta: ${text.length} karaktera")
         
@@ -34,7 +34,20 @@ object EpsParser {
         
         // Extract payment ID fields
         val naplatniBroj = extractNaplatniBroj(normalizedText)
-        val invoiceNumber = extractInvoiceNumber(normalizedText)
+        var invoiceNumber = extractInvoiceNumber(normalizedText)
+        
+        // CRITICAL CHECK: Naplatni broj vs Invoice Number Collision
+        // Sometimes OCR finds "Naplatni broj" digits when looking for "Račun broj" if the layout is tricky.
+        if (invoiceNumber != null && naplatniBroj != null) {
+            val cleanInvoice = invoiceNumber.replace(Regex("[^0-9]"), "")
+            val cleanNaplatni = naplatniBroj.replace(Regex("[^0-9]"), "")
+            
+            if (cleanInvoice == cleanNaplatni) {
+                android.util.Log.w("EpsParser", "⚠️ REJECTING Invoice Number ($invoiceNumber) because it matches Naplatni Broj!")
+                invoiceNumber = null
+            }
+        }
+
         val isStorno = detectStorno(normalizedText)
         val dueDate = extractDueDate(normalizedText)
         
@@ -78,7 +91,7 @@ object EpsParser {
             android.util.Log.w("EpsParser", "   - periodEnd: $periodEnd")
         }
         
-        val (recipientName, recipientAddress) = extractRecipientInfo(normalizedText)
+        val (recipientName, recipientAddress) = extractRecipientInfo()
 
         return EpsData(
             edNumber = extractEdNumber(normalizedText),
@@ -224,7 +237,7 @@ object EpsParser {
         }.joinToString("")
     }
 
-    private fun extractRecipientInfo(text: String): Pair<String?, String?> {
+    private fun extractRecipientInfo(): Pair<String?, String?> {
         // SAFETY: Return null for address to prevent hijacking non-EPS bills (Infostan).
         // The main ReceiptParser should handle address extraction.
         return null to null
@@ -326,8 +339,8 @@ object EpsParser {
             Regex("""Naplatni\s+broj[:\s]+(\d+)""", RegexOption.IGNORE_CASE),
             Regex("""Naplatni\s*broj[:\s]+(\d+)""", RegexOption.IGNORE_CASE),
             // Bez razmaka
-            Regex("""[Nn]aplatni.*?(\d{10,})"""),
-            Regex("""[Нн]аплатни.*?(\d{10,})""")
+            Regex("""[Nn]aplatni.{0,20}(\d{10,})"""),
+            Regex("""[Нн]аплатни.{0,20}(\d{10,})""")
         )
         
         for (regex in patterns) {
@@ -347,32 +360,61 @@ object EpsParser {
      */
     private fun extractInvoiceNumber(text: String): String? {
         val patterns = listOf(
-            // Ćirilica
-            Regex("""Рачун\s+број[:\s]+(\d+)""", RegexOption.IGNORE_CASE),
-            Regex("""Број\s+рачуна[:\s]+(\d+)""", RegexOption.IGNORE_CASE),
-            // Latinica
-            Regex("""Račun\s+broj[:\s]+(\d+)""", RegexOption.IGNORE_CASE),
-            Regex("""Racun\s+broj[:\s]+(\d+)""", RegexOption.IGNORE_CASE),
-            Regex("""Broj\s+računa[:\s]+(\d+)""", RegexOption.IGNORE_CASE),
-            Regex("""Broj\s+racuna[:\s]+(\d+)""", RegexOption.IGNORE_CASE)
+            Regex("""(?:Рачун|Pauun|Payyn|Pa4yn|Pacun|Ra[čc]un)[\s.]{0,10}?(?:број|6poj|broj)[:\s]*(\d{5,30})""", RegexOption.IGNORE_CASE),
+            Regex("""(?:Број|Broj)[\s.]{0,10}?(?:рачуна|racuna|ra[čc]una)[:\s]*(\d{5,30})""", RegexOption.IGNORE_CASE),
+            Regex("""(?:Račun|Racun|Рачун)[\s.]{0,5}br[:\s.]*(\d{5,30})""", RegexOption.IGNORE_CASE)
         )
         
-        for (regex in patterns) {
-            val match = regex.find(text)
-            if (match != null) {
-                val result = match.groupValues.getOrNull(1)
-                // IGNORE current year as invoice number (Infostan/EPS false positive)
-                val numInt = result?.toIntOrNull()
-                if (numInt != 2025 && numInt != 2026) {
-                    android.util.Log.d("EpsParser", "Pronađen broj računa: $result")
-                    return result
-                } else {
-                    android.util.Log.d("EpsParser", "⚠️ Ignorisan broj računa koji liči na godinu: $result")
+        val lines = text.lines()
+        for (i in lines.indices) {
+            val line = lines[i]
+            val isInvoiceLabel = line.contains("Račun", ignoreCase = true) || 
+                                line.contains("Рачун", ignoreCase = true) ||
+                                line.contains("Racun", ignoreCase = true) ||
+                                line.contains("Pauun", ignoreCase = true)
+                               
+            if (isInvoiceLabel) {
+                // 1. Try regex on current line
+                for (regex in patterns) {
+                    val match = regex.find(line)
+                    if (match != null) {
+                        val result = validateInvoice(match.groupValues.last())
+                        if (result != null) return result
+                    }
+                }
+                
+                // 2. Try next line for pure digits if current line has label but no value
+                if (i + 1 < lines.size) {
+                    val nextLine = lines[i+1].trim()
+                    val digitsMatch = Regex("""\b(\d{5,30})\b""").find(nextLine)
+                    if (digitsMatch != null) {
+                        val result = validateInvoice(digitsMatch.groupValues[1])
+                        if (result != null) return result
+                    }
                 }
             }
         }
+
+        // Final broad fallback
+        for (regex in patterns) {
+            val match = regex.find(text)
+            if (match != null) {
+                val result = validateInvoice(match.groupValues.last())
+                if (result != null) return result
+            }
+        }
+        
         android.util.Log.d("EpsParser", "Broj računa nije pronađen")
         return null
+    }
+
+    private fun validateInvoice(candidate: String): String? {
+        val cleanDigits = candidate.replace(Regex("[^0-9]"), "")
+        if (cleanDigits.length < 5) return null
+        val numInt = cleanDigits.toIntOrNull()
+        if (numInt != null && numInt in 2020..2030) return null
+        android.util.Log.d("EpsParser", "Pronađen i validiran broj računa: $cleanDigits")
+        return cleanDigits
     }
 
     /**

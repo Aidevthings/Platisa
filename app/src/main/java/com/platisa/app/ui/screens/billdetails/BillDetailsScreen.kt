@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -137,7 +138,10 @@ fun BillDetailsScreen(
                 onMarkPaid = { payTotal -> viewModel.markAsPaid(payTotal) },
                 isSaving = saveQrStatus is SaveQrStatus.Saving,
                 isLatestForMerchant = state.isLatestForMerchant,
-                vibrate = { viewModel.vibrate(it) }
+                vibrate = { viewModel.vibrate(it) },
+                isDebtPartiallyPaid = state.isDebtPartiallyPaid,
+                localUnpaidSum = state.localUnpaidSum,
+                billDebt = state.billDebt
             )
         }
     }
@@ -155,7 +159,10 @@ fun BillDetailsContent(
     onMarkPaid: (Boolean) -> Unit,
     isSaving: Boolean,
     isLatestForMerchant: Boolean,
-    vibrate: (com.platisa.app.core.common.VibrationHelper.HapticType) -> Unit
+    vibrate: (com.platisa.app.core.common.VibrationHelper.HapticType) -> Unit,
+    isDebtPartiallyPaid: Boolean = false,
+    localUnpaidSum: Double = 0.0,
+    billDebt: Double = 0.0
 ) {
     val customColors = LocalPlatisaColors.current
     // Extract QR code URL from receipt
@@ -167,6 +174,9 @@ fun BillDetailsContent(
         android.util.Log.d("BillDetails", "QR Code exists: ${qrCodeUrl.isNotEmpty()}")
     }
     
+    // Scope for suspend functions (Snackbar)
+    val scope = rememberCoroutineScope()
+
     // Smart Payment Logic
     var selectedOption by remember { mutableStateOf(PaymentOption.CURRENT_MONTH) }
     
@@ -237,13 +247,61 @@ fun BillDetailsContent(
             ) {
                 Spacer(modifier = Modifier.height(0.dp))
 
+                // WARNING: Partial Debt Payment Detected
+                if (isDebtPartiallyPaid) {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = customColors.statusUnpaid.copy(alpha = 0.15f)
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, customColors.statusUnpaid)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Warning,
+                                contentDescription = "Warning",
+                                tint = customColors.statusUnpaid
+                            )
+                            Column {
+                                Text(
+                                    text = "Moguće duplo plaćanje!",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = customColors.statusUnpaid
+                                )
+                                Text(
+                                    text = "Dug na računu (${com.platisa.app.core.common.Formatters.formatCurrency(BigDecimal(billDebt))}) je veći od neplaćenih računa u aplikaciji (${com.platisa.app.core.common.Formatters.formatCurrency(BigDecimal(localUnpaidSum))}). Opcija 'Plati sve' je isključena radi Vaše sigurnosti.",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    lineHeight = 16.sp
+                                )
+                            }
+                        }
+                    }
+                }
+
                 // Payment Option Toggle (Smart Parsing)
                 if (showPaymentToggle) {
                     PaymentOptionSelector(
                         selectedOption = selectedOption,
                         onOptionSelected = { 
-                            vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
-                            selectedOption = it 
+                            if (isDebtPartiallyPaid && it == PaymentOption.TOTAL_DEBT) {
+                                // BLOCK interaction
+                                vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.ERROR)
+                                scope.launch {
+                                    com.platisa.app.core.common.SnackbarManager.showMessage("Opcija onemogućena radi sigurnosti!")
+                                }
+                            } else {
+                                vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
+                                selectedOption = it 
+                            }
                         },
                         currentMonthAmount = currentAmount,
                         totalDebtAmount = totalDebtAmount
@@ -304,8 +362,10 @@ fun BillDetailsContent(
                     return true
                 }
                 
-                fun cleanAddress(text: String): String {
-                    var cleaned = text
+                fun formatAddress(text: String): String {
+                    var formatted = text
+                    
+                    // 1. Clean metadata prefixes if they exist (optional, but good for cleanup)
                     val metadataKeywords = listOf(
                         "VRSTA PROSTORA", "ŠIFRA PROSTORA", "SIFRA PROSTORA",
                         "ВРСТА ПРОСТОРА", "ШИФРА ПРОСТОРА", "KATEGORIJA", "POVRŠINA",
@@ -313,15 +373,36 @@ fun BillDetailsContent(
                     )
                     for (keyword in metadataKeywords) {
                         val regex = Regex("(?i)$keyword[:\\s]+[^,]*", RegexOption.IGNORE_CASE)
-                        cleaned = cleaned.replace(regex, "").trim()
+                        formatted = formatted.replace(regex, "").trim()
                     }
-                    return cleaned.removePrefix(":").removePrefix(",").trim().removeSuffix(",").trim()
+                    formatted = formatted.removePrefix(":").removePrefix(",").trim().removeSuffix(",").trim()
+
+                    // 2. Insert Newlines before key structural keywords
+                    // Case insensitive matching for Rejon, Pak, Opstina, etc.
+                    val splitKeywords = listOf("Rejon:", "Pak:", "Opština:", "Opstina:", "Naselje:", "Ulica:", "Broj:")
+                    for (keyword in splitKeywords) {
+                        // Replace " Keyword:" with "\nKeyword:"
+                        // We look for word boundary or space before it
+                        val regex = Regex("(?i)\\b(${keyword})", RegexOption.IGNORE_CASE)
+                        formatted = formatted.replace(regex, "\n$1")
+                    }
+
+                    // 3. Move Postal Codes (5 digits) to new line
+                    // Matches 5 digits that are distinct words (e.g. 11000)
+                    // Replaces: "Street 10, 11000 City" -> "Street 10,\n11000 City"
+                    val postalCodeRegex = Regex("[,\\s]+(\\d{5})\\b")
+                    formatted = formatted.replace(postalCodeRegex, "\n$1")
+
+                    // 3. Fix double newlines just in case
+                    formatted = formatted.replace("\n\n", "\n").trim()
+                    
+                    return formatted
                 }
 
                 // FORCE DISPLAY FOR DEBUGGING
                 // if (address != null && isValidAddress(address)) {
                 if (address != null) {
-                    val cleanedDisplayAddress = address // cleanAddress(address) - Disable cleaning to see raw debug output
+                    val cleanedDisplayAddress = formatAddress(address)
                    if (cleanedDisplayAddress.isNotBlank()) {
                        DataFieldMultiline(
                            label = "ADRESA OBJEKTA",
@@ -332,15 +413,13 @@ fun BillDetailsContent(
                    }
                 }
 
-                // Invoice Number Field
-                if (receipt.invoiceNumber != null) {
-                    DataField(
-                        label = "BROJ RAČUNA",
-                        value = receipt.invoiceNumber,
-                        icon = Icons.Default.Tag,
-                        iconColor = customColors.neonCyan
-                    )
-                }
+                // Invoice Number Field (Always visible as requested)
+                DataField(
+                    label = "BROJ RAČUNA",
+                    value = receipt.invoiceNumber ?: "Nije detektovan",
+                    icon = Icons.Default.Tag,
+                    iconColor = if (receipt.invoiceNumber != null) customColors.neonCyan else Color.Gray
+                )
 
                 // Date Field
                 DataField(
@@ -1091,10 +1170,10 @@ fun DataFieldMultiline(
                 Spacer(modifier = Modifier.width(16.dp))
                 Text(
                     text = value,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Medium,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    lineHeight = 22.sp
+                    lineHeight = 28.sp
                 )
             }
         }

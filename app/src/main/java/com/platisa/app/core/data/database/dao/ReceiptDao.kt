@@ -121,5 +121,26 @@ interface ReceiptDao {
 
     @Query("SELECT MAX(date) FROM receipts WHERE TRIM(merchantName) = TRIM(:merchantName) COLLATE NOCASE")
     suspend fun getLatestReceiptDateForMerchant(merchantName: String): Long?
+
+    // Real-time Sync Helpers
+    // GLOBAL UPDATE: If ID matches, it IS the same bill. Ignore sourceEmail (handles Manual/Shared/Forwarded bills)
+    @Query("UPDATE receipts SET paymentStatus = 'PAID', updatedAt = :timestamp, metadata = metadata || ' [Sync:Paid]' WHERE externalId IN (:ids) AND paymentStatus != 'PAID'")
+    suspend fun markAsPaid(ids: List<String>, timestamp: Long = System.currentTimeMillis())
+
+    // UNPAID SYNC: Strict scoping to avoid race conditions. 
+    // Only unmark bills that clearly belong to this source (prevents wiping other people's payments)
+    @Query("UPDATE receipts SET paymentStatus = 'UNPAID', updatedAt = :timestamp, metadata = metadata || ' [Sync:Unpaid]' WHERE externalId NOT IN (:ids) AND sourceEmail = :sourceEmail AND externalId IS NOT NULL AND paymentStatus = 'PAID'")
+    suspend fun markAsUnpaid(ids: List<String>, sourceEmail: String, timestamp: Long = System.currentTimeMillis())
+
+    // SAFE SYNC HELPERS (v2)
+    @Query("SELECT externalId FROM receipts WHERE sourceEmail = :sourceEmail AND paymentStatus = 'PAID' AND externalId IS NOT NULL")
+    suspend fun getPaidExternalIdsBySource(sourceEmail: String): List<String>
+
+    @Query("UPDATE receipts SET paymentStatus = 'UNPAID', updatedAt = :timestamp, metadata = metadata || ' [Sync:Unpaid]' WHERE externalId IN (:ids)")
+    suspend fun markAsUnpaidByIds(ids: List<String>, timestamp: Long = System.currentTimeMillis())
+
+    // Cascade Validation: Get SUM of unpaid bills OLDER than this one
+    @Query("SELECT SUM(totalAmount) FROM receipts WHERE TRIM(merchantName) = TRIM(:merchantName) COLLATE NOCASE AND paymentStatus = 'UNPAID' AND date < :beforeDate")
+    suspend fun getUnpaidPastBillsSum(merchantName: String, beforeDate: Long): Double?
 }
 

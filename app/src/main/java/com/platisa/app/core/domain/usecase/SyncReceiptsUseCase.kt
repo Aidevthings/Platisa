@@ -281,11 +281,11 @@ class SyncReceiptsUseCase @Inject constructor(
             // DEBUG: Log file with parsed data for easier tracing
             android.util.Log.d("SyncReceiptsUseCase", "📄 ========== PARSED FILE ==========")
             android.util.Log.d("SyncReceiptsUseCase", "📄 File: ${file.name}")
-            android.util.Log.d("SyncReceiptsUseCase", "📄 Naplatni: ${epsData.naplatniBroj}")
-            android.util.Log.d("SyncReceiptsUseCase", "📄 PaymentId: ${epsData.paymentId}")
-            android.util.Log.d("SyncReceiptsUseCase", "📄 Invoice: ${epsData.invoiceNumber}")
-            android.util.Log.d("SyncReceiptsUseCase", "📄 Period: ${epsData.periodStart} - ${epsData.periodEnd}")
-            android.util.Log.d("SyncReceiptsUseCase", "📄 STORNO: ${epsData.isStorno}")
+            android.util.Log.d("SyncReceiptsUseCase", "📄 Naplatni: ${epsData?.naplatniBroj}")
+            android.util.Log.d("SyncReceiptsUseCase", "📄 PaymentId: ${epsData?.paymentId}")
+            android.util.Log.d("SyncReceiptsUseCase", "📄 Invoice: ${epsData?.invoiceNumber}")
+            android.util.Log.d("SyncReceiptsUseCase", "📄 Period: ${epsData?.periodStart} - ${epsData?.periodEnd}")
+            android.util.Log.d("SyncReceiptsUseCase", "📄 STORNO: ${epsData?.isStorno}")
             android.util.Log.d("SyncReceiptsUseCase", "📄 Parsed Amount: ${parsed.totalAmount}")
             android.util.Log.d("SyncReceiptsUseCase", "📄 Parsed Merchant: ${parsed.merchantName}")
             android.util.Log.d("SyncReceiptsUseCase", "📄 ==================================")
@@ -294,18 +294,18 @@ class SyncReceiptsUseCase @Inject constructor(
             val finalRecipientName = (if (file.extension.equals("pdf", ignoreCase = true)) {
                 val qrContent = PdfUtils.extractQrCode(file)
                 if (qrContent != null) IpsParser.parse(qrContent)?.payerName else null
-            } else null) ?: epsData.recipientName ?: parsed.recipientName
+            } else null) ?: epsData?.recipientName ?: parsed.recipientName
             
-            val finalRecipientAddress = epsData.recipientAddress ?: parsed.recipientAddress
+            val finalRecipientAddress = epsData?.recipientAddress ?: parsed.recipientAddress
 
             // Priority: QR amount (if no debt) > EPS Current Monthly Charge > EPS amount > Receipt parser amount
             // SMART PARSING FIX: Prioritize 'currentMonthAmount' for Statistics accuracy
-            val smartAmount = epsData.currentMonthAmount
+            val smartAmount = epsData?.currentMonthAmount
             val totalAmount = if (smartAmount != null && smartAmount > BigDecimal.ZERO) {
-                android.util.Log.d("SyncReceiptsUseCase", "💡 USING SMART PARSING AMOUNT: $smartAmount (Original Total: ${epsData.totalConsumption ?: parsed.totalAmount})")
+                android.util.Log.d("SyncReceiptsUseCase", "💡 USING SMART PARSING AMOUNT: $smartAmount (Original Total: ${epsData?.totalConsumption ?: parsed.totalAmount})")
                 smartAmount
             } else {
-                qrAmount ?: epsData.totalConsumption ?: parsed.totalAmount ?: BigDecimal.ZERO
+                qrAmount ?: epsData?.totalConsumption ?: parsed.totalAmount ?: BigDecimal.ZERO
             }
             val finalMerchant = merchantName ?: parsed.merchantName ?: "Unknown"
             
@@ -317,36 +317,55 @@ class SyncReceiptsUseCase @Inject constructor(
                 com.platisa.app.core.domain.model.PaymentStatus.UNPAID
             }
             
-            // Create receipt with Payment ID fields AND externalId
-            val receipt = Receipt(
+            // Create PRELIMINARY receipt to generate Deterministic ID
+            val baseReceipt = Receipt(
                 merchantName = finalMerchant,
                 totalAmount = totalAmount,
-                // CRITICAL FIX: Use EPS Billing Period End if available (normalizes Storno/Original dates)
-                date = epsData.periodEnd ?: parsed.date ?: Date(),
-                dueDate = epsData.dueDate ?: parsed.dueDate,
+                date = epsData?.periodEnd ?: parsed.date ?: Date(),
+                dueDate = epsData?.dueDate ?: parsed.dueDate,
                 imagePath = file.absolutePath,
                 qrCodeData = qrCodeData,
-                invoiceNumber = epsData.invoiceNumber ?: parsed.invoiceNumber,
-                naplatniNumber = epsData.naplatniBroj,
-                paymentId = epsData.paymentId,
-                isStorno = epsData.isStorno,
-                isVisible = !epsData.isStorno,
-                originalSource = accountEmail.lowercase(), // UNIVERSAL SHARING: Track exact source email (LOWERCASE)
-                externalId = externalId,
+                invoiceNumber = epsData?.invoiceNumber ?: parsed.invoiceNumber,
+                naplatniNumber = epsData?.naplatniBroj,
+                paymentId = epsData?.paymentId,
+                isStorno = epsData?.isStorno ?: false,
+                isVisible = !(epsData?.isStorno ?: false),
+                originalSource = accountEmail.lowercase(),
+                externalId = "", // Placeholder
                 recipientName = finalRecipientName,
                 recipientAddress = finalRecipientAddress,
-                currentMonthAmount = epsData.currentMonthAmount,
-                previousDebtAmount = epsData.previousDebtAmount,
-                metadata = "SOURCE_EMAIL:$accountEmail", // Persistence Hack for Firestore Sync
-                paymentStatus = initialStatus // Set initial status based on cloud
+                currentMonthAmount = epsData?.currentMonthAmount,
+                previousDebtAmount = epsData?.previousDebtAmount,
+                metadata = "SOURCE_EMAIL:$accountEmail|GMAIL_ID:$externalId", // Store original Gmail ID
+                paymentStatus = initialStatus
             )
+
+            // GENERATE DETERMINISTIC ID
+            val deterministicId = com.platisa.app.core.domain.util.DeterministicIdGenerator.generate(baseReceipt)
+            android.util.Log.d("SyncReceiptsUseCase", "🔐 Swapping Gmail ID ($externalId) -> Deterministic ID ($deterministicId)")
+            
+            val finalReceipt = baseReceipt.copy(externalId = deterministicId)
+            
+            // Re-Check PAID status with DETERMINISTIC ID (since that's what other devices use)
+            val finalStatus = if (paidIds.contains(deterministicId)) {
+                 com.platisa.app.core.domain.model.PaymentStatus.PAID
+            } else {
+                 finalReceipt.paymentStatus
+            }
+            
+            val receiptToSave = finalReceipt.copy(paymentStatus = finalStatus)
+
             
             try {
                 // Pass billingPeriod string explicitly for safe duplicate check
-                val id = repo.insertReceipt(receipt, epsData.billingPeriod)
+                val id = repo.insertReceipt(receiptToSave, epsData?.billingPeriod)
                 android.util.Log.d("SyncReceiptsUseCase", "✅ Receipt saved with ID: $id")
-                android.util.Log.d("SyncReceiptsUseCase", "💰 FINAL AMOUNT: ${receipt.totalAmount} | Merchant: ${receipt.merchantName} | Date: ${receipt.date}")
-                repo.insertEpsData(epsData, id)
+                android.util.Log.d("SyncReceiptsUseCase", "💰 FINAL AMOUNT: ${receiptToSave.totalAmount} | Merchant: ${receiptToSave.merchantName} | Date: ${receiptToSave.date}")
+                
+                // Only insert EPS data if it's not null
+                if (epsData != null) {
+                    repo.insertEpsData(epsData, id)
+                }
                 parsedCount.incrementAndGet()
             } catch (e: DuplicateBillException) {
                 android.util.Log.w("SyncReceiptsUseCase", "🛑 DUPLICATE BLOCKED: ${e.message}")
