@@ -33,7 +33,7 @@ class EpsParserTest {
             Račun broj: 123456
         """.trimIndent()
         
-        val result = EpsParser.parse(text)
+        val result = EpsParser.parse(text)!!
         
         assertEquals("2004158536", result.naplatniBroj)
     }
@@ -46,7 +46,7 @@ class EpsParserTest {
             Рачун број: 123456
         """.trimIndent()
         
-        val result = EpsParser.parse(text)
+        val result = EpsParser.parse(text)!!
         
         assertEquals("2004158536", result.naplatniBroj)
     }
@@ -59,7 +59,7 @@ class EpsParserTest {
             Naplatni broj: 2004158536
         """.trimIndent()
         
-        val result = EpsParser.parse(text)
+        val result = EpsParser.parse(text)!!
         
         assertEquals("987654321", result.invoiceNumber)
     }
@@ -72,7 +72,7 @@ class EpsParserTest {
             Наплатни број: 2004158536
         """.trimIndent()
         
-        val result = EpsParser.parse(text)
+        val result = EpsParser.parse(text)!!
         
         assertEquals("987654321", result.invoiceNumber)
     }
@@ -89,7 +89,7 @@ class EpsParserTest {
             Naplatni broj: 2004158536
         """.trimIndent()
         
-        val result = EpsParser.parse(text)
+        val result = EpsParser.parse(text)!!
         
         assertNotNull("Period start should be extracted", result.periodStart)
         assertNotNull("Period end should be extracted", result.periodEnd)
@@ -106,7 +106,7 @@ class EpsParserTest {
             Наплатни број: 2004158536
         """.trimIndent()
         
-        val result = EpsParser.parse(text)
+        val result = EpsParser.parse(text)!!
         
         assertNotNull(result.periodStart)
         assertNotNull(result.periodEnd)
@@ -120,7 +120,7 @@ class EpsParserTest {
             Naplatni broj: 2004158536
         """.trimIndent()
         
-        val result = EpsParser.parse(text)
+        val result = EpsParser.parse(text)!!
         
         assertNotNull(result.periodStart)
         assertNotNull(result.periodEnd)
@@ -134,7 +134,7 @@ class EpsParserTest {
             Period obračuna: 05.10.2025 - 01.11.2025
         """.trimIndent()
         
-        val result = EpsParser.parse(text)
+        val result = EpsParser.parse(text)!!
         
         assertNotNull("PaymentId should be created", result.paymentId)
         assertEquals("2004158536-20251005-20251101", result.paymentId)
@@ -152,7 +152,7 @@ class EpsParserTest {
             Naplatni broj: 2004158536
         """.trimIndent()
         
-        val result = EpsParser.parse(text)
+        val result = EpsParser.parse(text)!!
         
         assertTrue("STORNO should be detected", result.isStorno)
     }
@@ -165,7 +165,7 @@ class EpsParserTest {
             Наплатни број: 2004158536
         """.trimIndent()
         
-        val result = EpsParser.parse(text)
+        val result = EpsParser.parse(text)!!
         
         assertTrue("СТОРНО should be detected", result.isStorno)
     }
@@ -178,7 +178,7 @@ class EpsParserTest {
             Naplatni broj: 2004158536
         """.trimIndent()
         
-        val result = EpsParser.parse(text)
+        val result = EpsParser.parse(text)!!
         
         assertTrue(result.isStorno)
     }
@@ -191,7 +191,7 @@ class EpsParserTest {
             Ukupno za uplatu: 4521,36 RSD
         """.trimIndent()
         
-        val result = EpsParser.parse(text)
+        val result = EpsParser.parse(text)!!
         
         assertFalse("Regular bill should not be marked as STORNO", result.isStorno)
     }
@@ -208,7 +208,7 @@ class EpsParserTest {
             Niža tarifa (NT): 80 kWh
         """.trimIndent()
         
-        val result = EpsParser.parse(text)
+        val result = EpsParser.parse(text)!!
         
         assertNotNull("VT consumption should be extracted", result.consumptionVt)
         assertEquals(BigDecimal("150"), result.consumptionVt)
@@ -222,7 +222,7 @@ class EpsParserTest {
             Niža tarifa (NT): 80 kWh
         """.trimIndent()
         
-        val result = EpsParser.parse(text)
+        val result = EpsParser.parse(text)!!
         
         assertNotNull("NT consumption should be extracted", result.consumptionNt)
         assertEquals(BigDecimal("80"), result.consumptionNt)
@@ -236,7 +236,7 @@ class EpsParserTest {
             NT: 80,25 kWh
         """.trimIndent()
         
-        val result = EpsParser.parse(text)
+        val result = EpsParser.parse(text)!!
         
         assertEquals(BigDecimal("150.5"), result.consumptionVt)
         assertEquals(BigDecimal("80.25"), result.consumptionNt)
@@ -250,7 +250,7 @@ class EpsParserTest {
             NT: 80 kWh
         """.trimIndent()
         
-        val result = EpsParser.parse(text)
+        val result = EpsParser.parse(text)!!
         
         assertNotNull("Total consumption should be calculated", result.totalConsumption)
         assertEquals(BigDecimal("230"), result.totalConsumption)
@@ -263,7 +263,7 @@ class EpsParserTest {
             Ukupno potrošnja: 230 kWh
         """.trimIndent()
         
-        val result = EpsParser.parse(text)
+        val result = EpsParser.parse(text)!!
         
         assertNotNull(result.totalConsumption)
         assertEquals(BigDecimal("230"), result.totalConsumption)
@@ -280,7 +280,7 @@ class EpsParserTest {
             Rok za plaćanje: 15.11.2025
         """.trimIndent()
         
-        val result = EpsParser.parse(text)
+        val result = EpsParser.parse(text)!!
         
         assertNotNull("Due date should be extracted", result.dueDate)
         assertEquals("15.11.2025", dateFormat.format(result.dueDate!!))
@@ -293,7 +293,7 @@ class EpsParserTest {
             Рок за плаћање: 15.11.2025
         """.trimIndent()
         
-        val result = EpsParser.parse(text)
+        val result = EpsParser.parse(text)!!
         
         assertNotNull(result.dueDate)
     }
@@ -305,7 +305,7 @@ class EpsParserTest {
             Datum dospelosti: 20.11.2025
         """.trimIndent()
         
-        val result = EpsParser.parse(text)
+        val result = EpsParser.parse(text)!!
         
         assertNotNull(result.dueDate)
         assertEquals("20.11.2025", dateFormat.format(result.dueDate!!))
@@ -322,7 +322,7 @@ class EpsParserTest {
             ED broj: 12345678
         """.trimIndent()
         
-        val result = EpsParser.parse(text)
+        val result = EpsParser.parse(text)!!
         
         assertEquals("12345678", result.edNumber)
     }
@@ -334,7 +334,7 @@ class EpsParserTest {
             ЕД број: 12345678
         """.trimIndent()
         
-        val result = EpsParser.parse(text)
+        val result = EpsParser.parse(text)!!
         
         assertEquals("12345678", result.edNumber)
     }
@@ -352,7 +352,7 @@ class EpsParserTest {
             11000 BEOGRAD
         """.trimIndent()
         
-        val result = EpsParser.parse(text)
+        val result = EpsParser.parse(text)!!
         
         assertNotNull("Recipient name should be extracted", result.recipientName)
         // Note: The normalizeText function might modify the name
@@ -367,7 +367,7 @@ class EpsParserTest {
             11000 БЕОГРАД
         """.trimIndent()
         
-        val result = EpsParser.parse(text)
+        val result = EpsParser.parse(text)!!
         
         assertNotNull(result.recipientName)
     }
@@ -384,7 +384,7 @@ class EpsParserTest {
             Naplatni broj: 2004158536
         """.trimIndent()
         
-        val result = EpsParser.parse(text)
+        val result = EpsParser.parse(text)!!
         
         // When no period is found, month from header should be used
         // The extracted date should be the first day of the NEXT month
@@ -400,7 +400,7 @@ class EpsParserTest {
             Наплатни број: 2004158536
         """.trimIndent()
         
-        val result = EpsParser.parse(text)
+        val result = EpsParser.parse(text)!!
         
         assertNotNull(result.periodEnd)
     }
@@ -434,7 +434,7 @@ class EpsParserTest {
             Rok za plaćanje: 15.11.2025
         """.trimIndent()
         
-        val result = EpsParser.parse(text)
+        val result = EpsParser.parse(text)!!
         
         // Verify all fields are extracted
         assertEquals("2004158536", result.naplatniBroj)
@@ -475,7 +475,7 @@ class EpsParserTest {
             Рок за плаћање: 15.11.2025
         """.trimIndent()
         
-        val result = EpsParser.parse(text)
+        val result = EpsParser.parse(text)!!
         
         // Verify critical fields
         assertEquals("2004158536", result.naplatniBroj)
@@ -496,7 +496,7 @@ class EpsParserTest {
             Period obračuna: 05.10.2025 - 01.11.2025
         """.trimIndent()
         
-        val result = EpsParser.parse(text)
+        val result = EpsParser.parse(text)!!
         
         assertTrue("Bill should be marked as STORNO", result.isStorno)
         assertEquals("2004158536", result.naplatniBroj)
@@ -515,7 +515,7 @@ class EpsParserTest {
             Период обрачуна: 05.10.2025 - 01.11.2025
         """.trimIndent()
         
-        val result = EpsParser.parse(text)
+        val result = EpsParser.parse(text)!!
         
         assertEquals("2004158536", result.naplatniBroj)
         assertNotNull(result.periodStart)
@@ -529,7 +529,7 @@ class EpsParserTest {
             Nap1atni broj: 2004158536
         """.trimIndent()
         
-        val result = EpsParser.parse(text)
+        val result = EpsParser.parse(text)!!
         
         // Should still find naplatni broj even with minor OCR errors
         // Note: This might not work depending on parser robustness
@@ -542,7 +542,7 @@ class EpsParserTest {
             Ukupno za uplatu: 4521,36 RSD
         """.trimIndent()
         
-        val result = EpsParser.parse(text)
+        val result = EpsParser.parse(text)!!
         
         // Should not crash, fields should be null
         assertNull(result.naplatniBroj)
@@ -553,7 +553,7 @@ class EpsParserTest {
 
     @Test
     fun `handle empty text`() {
-        val result = EpsParser.parse("")
+        val result = EpsParser.parse("")!!
         
         // Should return EpsData with all null fields
         assertNull(result.naplatniBroj)
@@ -562,4 +562,5 @@ class EpsParserTest {
         assertFalse(result.isStorno)
     }
 }
+
 

@@ -20,7 +20,7 @@ class ReceiptParserTest {
             TOTAL: 1200 RSD
         """.trimIndent()
         
-        val result = ReceiptParser.parse(receiptText)
+        val result = ReceiptParser.parse(receiptText)!!
         assertNotNull(result.merchantName)
     }
 
@@ -34,7 +34,7 @@ class ReceiptParserTest {
             Hvala na poseti
         """.trimIndent()
         
-        val result = ReceiptParser.parse(receiptText)
+        val result = ReceiptParser.parse(receiptText)!!
         assertEquals(BigDecimal("300.00"), result.totalAmount)
     }
 
@@ -49,7 +49,7 @@ class ReceiptParserTest {
             UKUPNO: 300,00
         """.trimIndent()
 
-        val result = ReceiptParser.parse(receiptText)
+        val result = ReceiptParser.parse(receiptText)!!
         
         assertEquals(2, result.items.size)
         // Check simple existence
@@ -70,7 +70,7 @@ class ReceiptParserTest {
             UKUPNO: 12.000,00
         """.trimIndent()
 
-        val result = ReceiptParser.parse(receiptText)
+        val result = ReceiptParser.parse(receiptText)!!
 
         // Expected Logic:
         // 1. Parser finds "Општина" (Cyrillic) in line "НИНКОВИЋ..."
@@ -85,4 +85,5 @@ class ReceiptParserTest {
         assert(result.recipientAddress!!.contains("СУРЧИНСКИ ПУТ 16"))
 
 } }
+
 

@@ -9,6 +9,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -47,49 +48,75 @@ class BillDetailsViewModel @Inject constructor(
                 if (receipt != null) {
                     val isLatest = receiptRepository.isLatestReceipt(receipt.merchantName, receipt.date)
                     
-                    // Load EPS data if available
-                    epsDataRepository.getEpsDataByReceiptId(receiptId).collect { epsData ->
-                        
-                        // DEBT SAFETY CHECK:
-                        // Compare "Previous Debt" from the bill vs "Unpaid Local Bills".
-                        // If Bill says debt is 5000, but we only have 2000 unpaid locally, it means
-                        // we already paid 3000 separately. We should WARN the user not to pay total debt.
-                        var isDebtPartiallyPaid = false
-                        var localUnpaidSum = 0.0
-                        
-                        if (receipt.currentMonthAmount != null && receipt.totalAmount != null) {
+                    // 1. Get EPS data if it exists (Optional)
+                    val epsData = epsDataRepository.getEpsDataByReceiptId(receiptId).firstOrNull()
+                    
+                    // 2. DEBT SAFETY CHECK (Merchant Agnostic):
+                    // Compare "Previous Debt" from the bill vs "Unpaid Local Bills".
+                    var smartTotalDebt = 0.0
+                    var paidPastBillsSum = 0.0
+                    var isDebtPartiallyPaid = false
+                    var localUnpaidSum = 0.0
+                    var billDebt = 0.0
+                    
+     
+     
+                    // 2. DEBT SAFETY CHECK (Merchant Agnostic):
+                    // Compare "Previous Debt" from the bill vs "Unpaid Local Bills".
+                    
+                    if (receipt.currentMonthAmount != null || receipt.previousDebtAmount != null) {
+                        // Priority 1: Use explicit Previous Debt field if available (Most accurate)
+                        if (receipt.previousDebtAmount != null && receipt.previousDebtAmount > java.math.BigDecimal.ZERO) {
+                            billDebt = receipt.previousDebtAmount.toDouble()
+                        } 
+                        // Priority 2: Infer debt from Total - Current (Fallback)
+                        else if (receipt.totalAmount != null && receipt.currentMonthAmount != null) {
                              val totalAmount = receipt.totalAmount.toDouble()
                              val currentAmount = receipt.currentMonthAmount.toDouble()
-                             val billDebt = totalAmount - currentAmount
-                             
-                             if (billDebt > 0) {
-                                 localUnpaidSum = receiptRepository.getUnpaidPastBillsSum(receipt.merchantName, receipt.date.time)
-                                 
-                                 // SMART ELASTICITY logic:
-                                 // Tolerance = 10% of total debt
-                                 val tolerance = billDebt * 0.1
-                                 
-                                 // If we have SOME local bills, but the sum is significantly LESS than Bill Debt
-                                 // It means a chunk is missing or paid separately. Risk of double payment!
-                                 // IF localUnpaidSum is 0, we simply don't have the bills scanned yet, so we don't BLOCK.
-                                 if (localUnpaidSum > 0 && localUnpaidSum < (billDebt - tolerance)) {
-                                     isDebtPartiallyPaid = true
-                                     android.util.Log.w("BillDetailsVM", "⚠️ DEBT MISMATCH: Bill Debt is $billDebt. Local Unpaid is $localUnpaidSum. Partial Payment Detected!")
-                                 }
-                             }
+                             billDebt = totalAmount - currentAmount
                         }
 
-                        _billDetails.value = BillDetailsState.Success(
-                            receipt = receipt,
-                            vtConsumption = epsData?.consumptionVt?.toInt() ?: 0,
-                            ntConsumption = epsData?.consumptionNt?.toInt() ?: 0,
-                            billType = determineBillType(receipt),
-                            isLatestForMerchant = isLatest,
-                            isDebtPartiallyPaid = isDebtPartiallyPaid,
-                            localUnpaidSum = localUnpaidSum,
-                            billDebt = if (receipt.totalAmount != null && receipt.currentMonthAmount != null) (receipt.totalAmount.toDouble() - receipt.currentMonthAmount.toDouble()) else 0.0
-                        )
+                        if (billDebt > 0.01) { // Ignore rounding errors
+                             // Calculate what we ALREADY paid locally
+                             paidPastBillsSum = receiptRepository.getPaidPastBillsSum(receipt.merchantName, receipt.date.time)
+                             
+                             localUnpaidSum = receiptRepository.getUnpaidPastBillsSum(receipt.merchantName, receipt.date.time)
+                             val hasAnyPastBills = receiptRepository.hasAnyPastBills(receipt.merchantName, receipt.date.time)
+                             
+                             // SMART ELASTICITY logic:
+                             val tolerance = Math.max(billDebt * 0.1, 100.0)
+                             val diff = Math.abs(localUnpaidSum - billDebt)
+                             
+                             if (hasAnyPastBills && diff > tolerance) {
+                                 isDebtPartiallyPaid = true
+                                 
+                                 // SMART CALCULATION: (Current + Previous) - Locally Paid Past Bills
+                                 
+                                 // We use billDebt (which is confirmed Previous Debt) + Current Amount as the TRUE total
+                                 // We ignore receipt.totalAmount here because it might just be the scan value of the slip (often just current month)
+                                 val currentDouble = receipt.currentMonthAmount?.toDouble() ?: 0.0
+                                 val truePaperTotal = currentDouble + billDebt
+                                 
+                                 smartTotalDebt = Math.max(truePaperTotal - paidPastBillsSum, currentDouble)
+                                 
+                                 android.util.Log.d("BillDetailsVM", "🧠 SMART DEBT: TrueTotal($currentDouble + $billDebt) = $truePaperTotal. Paid=$paidPastBillsSum. Result=$smartTotalDebt")
+                             }
+                        }
                     }
+
+                    // 3. Update UI State
+                    _billDetails.value = BillDetailsState.Success(
+                        receipt = receipt,
+                        vtConsumption = epsData?.consumptionVt?.toInt() ?: 0,
+                        ntConsumption = epsData?.consumptionNt?.toInt() ?: 0,
+                        billType = determineBillType(receipt),
+                        isLatestForMerchant = isLatest,
+                        isDebtPartiallyPaid = isDebtPartiallyPaid,
+                        localUnpaidSum = localUnpaidSum,
+                        smartTotalDebt = smartTotalDebt,
+                        paidPastBillsSum = paidPastBillsSum,
+                        billDebt = billDebt
+                    )
                     
                     // Load receipt items (for fiscal receipts)
                     val items = receiptRepository.getReceiptItems(receiptId)
@@ -270,6 +297,8 @@ sealed class BillDetailsState {
         val isLatestForMerchant: Boolean = true,
         val isDebtPartiallyPaid: Boolean = false,
         val localUnpaidSum: Double = 0.0,
+        val smartTotalDebt: Double = 0.0,
+        val paidPastBillsSum: Double = 0.0,
         val billDebt: Double = 0.0
     ) : BillDetailsState()
     data class Error(val message: String) : BillDetailsState()

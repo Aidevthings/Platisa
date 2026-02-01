@@ -516,6 +516,14 @@ class ReceiptRepositoryImpl @Inject constructor(
        return receiptDate.time >= latestDate
     }
 
+    override suspend fun getPaidPastBillsSum(merchantName: String, beforeDate: Long): Double {
+        val paidPastBills = findMatchingBills(merchantName, receiptDao.getAllReceiptsList().filter { 
+            it.paymentStatus == com.platisa.app.core.data.database.entity.PaymentStatus.PAID && 
+            it.date.time < beforeDate 
+        })
+        return paidPastBills.sumOf { it.totalAmount.toDouble() }
+    }
+
     override suspend fun getUnpaidPastBillsSum(merchantName: String, beforeDate: Long): Double {
         val unpaidPastBills = findMatchingBills(merchantName, receiptDao.getAllReceiptsList().filter { 
             (it.paymentStatus == com.platisa.app.core.data.database.entity.PaymentStatus.UNPAID || 
@@ -523,6 +531,12 @@ class ReceiptRepositoryImpl @Inject constructor(
             it.date.time < beforeDate 
         })
         return unpaidPastBills.sumOf { it.totalAmount.toDouble() }
+    }
+
+    override suspend fun hasAnyPastBills(merchantName: String, beforeDate: Long): Boolean {
+        return findMatchingBills(merchantName, receiptDao.getAllReceiptsList().filter { 
+            it.date.time < beforeDate 
+        }).isNotEmpty()
     }
 
     private fun findMatchingBills(
@@ -542,17 +556,21 @@ class ReceiptRepositoryImpl @Inject constructor(
         
         return candidates.filter { candidate ->
             val normalizedCandidate = com.platisa.app.core.utils.SerbianGrammarUtils.normalizeForSync(candidate.merchantName)
-            
-            // 1. Direct Normalized Match
-            if (normalizedCandidate == normalizedTarget) return@filter true
-            if (normalizedCandidate.contains(normalizedTarget) || normalizedTarget.contains(normalizedCandidate)) return@filter true
-            
-            // 2. Alias Match
+            if (normalizedCandidate.isBlank()) return@filter false
+
+            // 1. Alias Match (Explicitly grouped providers have priority)
             val targetAliasKey = aliases.keys.find { normalizedTarget.contains(it) }
             if (targetAliasKey != null) {
                 val group = aliases[targetAliasKey] ?: emptyList()
                 if (group.any { normalizedCandidate.contains(it) }) return@filter true
             }
+
+            // 2. Direct Normalized Match
+            if (normalizedCandidate == normalizedTarget) return@filter true
+            
+            // 3. Fuzzy match ONLY for longer names (to avoid EPS matching PEPSI)
+            if (normalizedTarget.length > 3 && normalizedCandidate.contains(normalizedTarget)) return@filter true
+            if (normalizedCandidate.length > 3 && normalizedTarget.contains(normalizedCandidate)) return@filter true
             
             false
         }

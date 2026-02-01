@@ -141,7 +141,9 @@ fun BillDetailsScreen(
                 vibrate = { viewModel.vibrate(it) },
                 isDebtPartiallyPaid = state.isDebtPartiallyPaid,
                 localUnpaidSum = state.localUnpaidSum,
-                billDebt = state.billDebt
+                billDebt = state.billDebt,
+                smartTotalDebt = state.smartTotalDebt,
+                paidPastBillsSum = state.paidPastBillsSum
             )
         }
     }
@@ -162,7 +164,9 @@ fun BillDetailsContent(
     vibrate: (com.platisa.app.core.common.VibrationHelper.HapticType) -> Unit,
     isDebtPartiallyPaid: Boolean = false,
     localUnpaidSum: Double = 0.0,
-    billDebt: Double = 0.0
+    billDebt: Double = 0.0,
+    smartTotalDebt: Double = 0.0,
+    paidPastBillsSum: Double = 0.0
 ) {
     val customColors = LocalPlatisaColors.current
     // Extract QR code URL from receipt
@@ -179,34 +183,39 @@ fun BillDetailsContent(
 
     // Smart Payment Logic
     var selectedOption by remember { mutableStateOf(PaymentOption.CURRENT_MONTH) }
-    
-    // Only show toggle if we have both amounts and they are different
-    // Only show toggle if we have both amounts and they are different AND it is the latest bill
-    val showPaymentToggle = remember(receipt, isLatestForMerchant) {
-        isLatestForMerchant && 
-        receipt.currentMonthAmount != null && 
-        receipt.previousDebtAmount != null && 
-        receipt.previousDebtAmount > BigDecimal.ZERO
-    }
 
     // Calculate display values based on selection
     val currentAmount = receipt.currentMonthAmount ?: BigDecimal.ZERO
-    val totalDebtAmount = (receipt.currentMonthAmount ?: BigDecimal.ZERO) + (receipt.previousDebtAmount ?: BigDecimal.ZERO)
     
-    val displayAmount = if (showPaymentToggle && selectedOption == PaymentOption.TOTAL_DEBT) {
+    // SMART TOTAL DEBT: Use the calculated value from VM if we have a match, otherwise fallback to simple sum
+    val totalDebtAmount = if (smartTotalDebt > 0.0) {
+        BigDecimal.valueOf(smartTotalDebt)
+    } else {
+        (receipt.currentMonthAmount ?: BigDecimal.ZERO) + (receipt.previousDebtAmount ?: BigDecimal.ZERO)
+    }
+    
+    // Only show Total Debt option if it is the latest bill AND total debt > current amount
+    val showTotalDebtOption = remember(receipt, isLatestForMerchant, totalDebtAmount, currentAmount) {
+        isLatestForMerchant &&
+        totalDebtAmount > currentAmount
+    }
+    
+    // Force selection to CURRENT_MONTH if Total Debt is hidden
+    LaunchedEffect(showTotalDebtOption) {
+        if (!showTotalDebtOption) {
+            selectedOption = PaymentOption.CURRENT_MONTH
+        }
+    }
+    
+    val displayAmount = if (showTotalDebtOption && selectedOption == PaymentOption.TOTAL_DEBT) {
         totalDebtAmount
     } else {
-        // Default to current month if toggle is shown, otherwise use totalAmount from receipt
-        if (showPaymentToggle) currentAmount else (receipt.totalAmount ?: BigDecimal.ZERO)
+        currentAmount
     }
 
-    // Patch QR Code if needed
-    val displayQrCode = remember(qrCodeUrl, displayAmount, showPaymentToggle) {
-        if (showPaymentToggle) {
-             patchQrAmount(qrCodeUrl, displayAmount)
-        } else {
-            qrCodeUrl
-        }
+    // Patch QR Code if needed - ALWAYS patch for Smart Debt to ensure correct amount
+    val displayQrCode = remember(qrCodeUrl, displayAmount, showTotalDebtOption) {
+        patchQrAmount(qrCodeUrl, displayAmount)
     }
 
     // Format amount
@@ -247,17 +256,19 @@ fun BillDetailsContent(
             ) {
                 Spacer(modifier = Modifier.height(0.dp))
 
-                // WARNING: Partial Debt Payment Detected
-                if (isDebtPartiallyPaid) {
+                // INFORMATION: Smart Debt Calculation
+                // Only show if we actually deducted something (paidPastBillsSum > 0)
+                // AND if we are offering the Total Debt option (meaning there is still extra debt to pay)
+                if (isDebtPartiallyPaid && paidPastBillsSum > 0.01 && showTotalDebtOption) {
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(bottom = 8.dp),
                         colors = CardDefaults.cardColors(
-                            containerColor = customColors.statusUnpaid.copy(alpha = 0.15f)
+                            containerColor = customColors.neonCyan.copy(alpha = 0.15f)
                         ),
                         shape = RoundedCornerShape(12.dp),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, customColors.statusUnpaid)
+                        border = androidx.compose.foundation.BorderStroke(1.dp, customColors.neonCyan)
                     ) {
                         Row(
                             modifier = Modifier.padding(12.dp),
@@ -265,19 +276,19 @@ fun BillDetailsContent(
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Warning,
-                                contentDescription = "Warning",
-                                tint = customColors.statusUnpaid
+                                imageVector = Icons.Default.AutoAwesome,
+                                contentDescription = "Smart Calc",
+                                tint = customColors.neonCyan
                             )
                             Column {
                                 Text(
-                                    text = "Moguće duplo plaćanje!",
+                                    text = "Pametni obračun duga",
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = customColors.statusUnpaid
+                                    color = customColors.neonCyan
                                 )
                                 Text(
-                                    text = "Dug na računu (${com.platisa.app.core.common.Formatters.formatCurrency(BigDecimal(billDebt))}) je veći od neplaćenih računa u aplikaciji (${com.platisa.app.core.common.Formatters.formatCurrency(BigDecimal(localUnpaidSum))}). Opcija 'Plati sve' je isključena radi Vaše sigurnosti.",
+                                    text = "Vaš ukupan dug je umanjen za račune koje ste već platili kroz aplikaciju (${com.platisa.app.core.common.Formatters.formatCurrency(BigDecimal(paidPastBillsSum))}).",
                                     fontSize = 12.sp,
                                     color = MaterialTheme.colorScheme.onSurface,
                                     lineHeight = 16.sp
@@ -287,24 +298,18 @@ fun BillDetailsContent(
                     }
                 }
 
-                // Payment Option Toggle (Smart Parsing)
-                if (showPaymentToggle) {
+                // Payment Option Toggle (Only visible if Latest Bill AND has Extra Debt)
+                if (showTotalDebtOption) {
                     PaymentOptionSelector(
                         selectedOption = selectedOption,
                         onOptionSelected = { 
-                            if (isDebtPartiallyPaid && it == PaymentOption.TOTAL_DEBT) {
-                                // BLOCK interaction
-                                vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.ERROR)
-                                scope.launch {
-                                    com.platisa.app.core.common.SnackbarManager.showMessage("Opcija onemogućena radi sigurnosti!")
-                                }
-                            } else {
-                                vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
-                                selectedOption = it 
-                            }
+                            vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
+                            selectedOption = it 
                         },
                         currentMonthAmount = currentAmount,
-                        totalDebtAmount = totalDebtAmount
+                        totalDebtAmount = totalDebtAmount,
+                        isTotalDebtDisabled = false, // Always enabled if shown
+                        showTotalDebtOption = true
                     )
                 }
 
@@ -1261,7 +1266,9 @@ fun PaymentOptionSelector(
     selectedOption: PaymentOption,
     onOptionSelected: (PaymentOption) -> Unit,
     currentMonthAmount: BigDecimal,
-    totalDebtAmount: BigDecimal
+    totalDebtAmount: BigDecimal,
+    isTotalDebtDisabled: Boolean = false, // New parameter
+    showTotalDebtOption: Boolean = true // New parameter to control visibility of the second option
 ) {
     val customColors = LocalPlatisaColors.current
     
@@ -1275,8 +1282,10 @@ fun PaymentOptionSelector(
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         // Updated Header with larger font
+        val headerText = if (showTotalDebtOption) "Izaberite opciju plaćanja" else "Detalji plaćanja"
+        
         Text(
-            text = "Izaberite opciju plaćanja",
+            text = headerText,
             fontSize = 16.sp, // Increased from 14.sp
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurface,
@@ -1292,33 +1301,45 @@ fun PaymentOptionSelector(
             PaymentOptionCard(
                 title = "Mesečni račun",
                 amount = currentMonthAmount,
-                isSelected = selectedOption == PaymentOption.CURRENT_MONTH,
+                isSelected = selectedOption == PaymentOption.CURRENT_MONTH || !showTotalDebtOption, // Select if only option
                 onClick = { onOptionSelected(PaymentOption.CURRENT_MONTH) },
                 color = customColors.neonCyan
             )
 
-            // Option 2: Total Debt
-            PaymentOptionCard(
-                title = "Ukupan dug",
-                amount = totalDebtAmount,
-                isSelected = selectedOption == PaymentOption.TOTAL_DEBT,
-                onClick = { onOptionSelected(PaymentOption.TOTAL_DEBT) },
-                color = customColors.neonPurple
+            // Option 2: Total Debt (Conditional)
+            if (showTotalDebtOption) {
+                PaymentOptionCard(
+                    title = "Ukupan dug",
+                    amount = totalDebtAmount,
+                    isSelected = selectedOption == PaymentOption.TOTAL_DEBT,
+                    onClick = { onOptionSelected(PaymentOption.TOTAL_DEBT) },
+                    color = if (isTotalDebtDisabled) Color.Gray else customColors.neonPurple, // Gray out if disabled
+                    isEnabled = !isTotalDebtDisabled // New parameter
+                )
+            }
+        }
+        
+        if (showTotalDebtOption) {
+            val infoText = if (selectedOption == PaymentOption.CURRENT_MONTH) {
+                "ℹ️ Plaćate samo zaduženje za ovaj mesec via IPS QR."
+            } else {
+                "ℹ️ Plaćate celokupan dug uključujući prethodna dugovanja."
+            }
+            
+            Text(
+                text = infoText,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp)
+            )
+        } else {
+            Text(
+                text = "ℹ️ Prikazan je samo iznos za tekući mesec jer nemate dodatnih dugovanja.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp)
             )
         }
-        
-        val infoText = if (selectedOption == PaymentOption.CURRENT_MONTH) {
-            "ℹ️ Plaćate samo zaduženje za ovaj mesec via IPS QR."
-        } else {
-            "ℹ️ Plaćate celokupan dug uključujući prethodna dugovanja."
-        }
-        
-        Text(
-            text = infoText,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 2.dp)
-        )
     }
 }
 
@@ -1329,7 +1350,8 @@ fun PaymentOptionCard(
     isSelected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    color: Color
+    color: Color,
+    isEnabled: Boolean = true // New parameter
 ) {
     // Visual State Logic
     val borderColor = if (isSelected) color else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
@@ -1342,7 +1364,9 @@ fun PaymentOptionCard(
     // Using Surface for better click handling and semantic behavior
     Surface(
         onClick = onClick,
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .alpha(if (isEnabled) 1f else 0.5f), // Dim if disabled
         shape = RoundedCornerShape(12.dp),
         color = containerColor,
         border = androidx.compose.foundation.BorderStroke(borderWidth, borderColor)
