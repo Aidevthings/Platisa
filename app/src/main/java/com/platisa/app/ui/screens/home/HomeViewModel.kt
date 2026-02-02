@@ -104,8 +104,8 @@ class HomeViewModel @Inject constructor(
             .sortedWith(
                 compareBy<Receipt> { receipt ->
                     when (receipt.paymentStatus) {
-                        com.platisa.app.core.domain.model.PaymentStatus.UNPAID -> 0
-                        com.platisa.app.core.domain.model.PaymentStatus.PROCESSING -> 1
+                        com.platisa.app.core.domain.model.PaymentStatus.PROCESSING -> 0 // Highest Priority (Ready for Payment)
+                        com.platisa.app.core.domain.model.PaymentStatus.UNPAID -> 1
                         com.platisa.app.core.domain.model.PaymentStatus.PAID -> 2
                     }
                 }.thenByDescending { it.date }

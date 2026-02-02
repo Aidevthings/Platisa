@@ -105,20 +105,31 @@ fun HomeScreen(
     val scope = rememberCoroutineScope()
     
     // Listen for scroll-to-receipt signal from BillDetails
-    val scrollToReceiptId = navController.currentBackStackEntry?.savedStateHandle?.getLiveData<Long>("scrollToReceiptId")
+    val savedStateHandle = navController.currentBackStackEntry?.savedStateHandle
+    var scrollToReceiptId by remember { mutableStateOf<Long?>(null) }
+
+    DisposableEffect(savedStateHandle) {
+        val liveData = savedStateHandle?.getLiveData<Long>("scrollToReceiptId")
+        val observer = androidx.lifecycle.Observer<Long> { id ->
+            scrollToReceiptId = id
+        }
+        liveData?.observeForever(observer)
+        onDispose {
+            liveData?.removeObserver(observer)
+        }
+    }
     
-    LaunchedEffect(scrollToReceiptId) {
-        scrollToReceiptId?.observeForever { receiptId ->
-            receiptId?.let {
-                // Find the index of the receipt in the list
-                val index = receipts.indexOfFirst { receipt -> receipt.id == receiptId }
-                if (index >= 0) {
-                    // Scroll to the receipt (+1 to account for header item)
-                    scope.launch {
-                        listState.animateScrollToItem(index)
-                    }
-                }
-                // Clear the saved state
+    LaunchedEffect(scrollToReceiptId, receipts) {
+        scrollToReceiptId?.let { receiptId ->
+            // Find the index of the receipt in the list
+            val index = receipts.indexOfFirst { receipt -> receipt.id == receiptId }
+            if (index >= 0) {
+                // Scroll to the receipt
+                // We add a small delay to ensure layout is ready if needed, or just animate
+                listState.animateScrollToItem(index)
+                
+                // Clear the saved state ONLY after we successfully found and scrolled to it
+                // This prevents clearing it before the list has actually loaded the item
                 navController.currentBackStackEntry?.savedStateHandle?.remove<Long>("scrollToReceiptId")
             }
         }

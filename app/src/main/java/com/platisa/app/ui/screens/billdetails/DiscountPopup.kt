@@ -51,14 +51,25 @@ fun DiscountPopup(
             usePlatformDefaultWidth = false
         )
     ) {
-        // Apply Dynamic Text Rules (Max Font Scale 1.3x) by wrapping in App Theme
-        PlatisaTheme(darkTheme = isDarkTheme) {
-            // Surface required to apply theme background/content colors correctly if strictly needed,
-            // but here we just need the CompositionLocals (Density/Typography).
-            if (isDarkTheme) {
-                DarkThemePopupContent(discountTable = discountTable, onDismiss = onDismiss, onRemind = onRemind)
-            } else {
-                LightThemePopupContent(discountTable = discountTable, onDismiss = onDismiss, onRemind = onRemind)
+        // Apply Strict Scale Rules (Force 1.0x Font Scale for this specific popup)
+        val currentDensity = androidx.compose.ui.platform.LocalDensity.current
+        val strictDensity = androidx.compose.ui.unit.Density(
+            density = currentDensity.density,
+            fontScale = 1.0f // Force standard font size to prevent layout breakage
+        )
+
+        CompositionLocalProvider(
+            androidx.compose.ui.platform.LocalDensity provides strictDensity
+        ) {
+            // Apply Dynamic Text Rules (Max Font Scale 1.3x - effectively ignored due to local overwrite, which is what we want)
+            PlatisaTheme(darkTheme = isDarkTheme) {
+                // Surface required to apply theme background/content colors correctly if strictly needed,
+                // but here we just need the CompositionLocals (Density/Typography).
+                if (isDarkTheme) {
+                    DarkThemePopupContent(discountTable = discountTable, onDismiss = onDismiss, onRemind = onRemind)
+                } else {
+                    LightThemePopupContent(discountTable = discountTable, onDismiss = onDismiss, onRemind = onRemind)
+                }
             }
         }
     }
@@ -181,14 +192,14 @@ private fun DarkThemePopupContent(discountTable: List<DiscountRow>?, onDismiss: 
                         
                         // Two buttons stacked vertically
                         ElectricButtonDark(
-                            text = "Nastavi",
-                            onClick = onDismiss,
+                            text = "Dodaj podsetnik",
+                            onClick = onRemind,
                             glowAlpha = glowAlpha,
                             isPrimary = true
                         )
                         
                         ElectricButtonDark(
-                            text = "Otkaži",
+                            text = "Zatvori",
                             onClick = onDismiss,
                             glowAlpha = glowAlpha,
                             isPrimary = false
@@ -316,16 +327,16 @@ private fun DiscountGridDark(discountTable: List<DiscountRow>?, glowAlpha: Float
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            DiscountCellDark(text = "Попуст", isHeader = true, glowAlpha = glowAlpha, modifier = Modifier.weight(0.2f), style = MaterialTheme.typography.bodySmall)
-            DiscountCellDark(text = "Важи до", isHeader = true, glowAlpha = glowAlpha, modifier = Modifier.weight(0.4f)) // Defaults to bodyMedium
-            DiscountCellDark(text = "Износ", isHeader = true, glowAlpha = glowAlpha, modifier = Modifier.weight(0.4f))
+            DiscountCellDark(text = "Popust", isHeader = true, glowAlpha = glowAlpha, modifier = Modifier.weight(0.2f), style = MaterialTheme.typography.bodySmall)
+            DiscountCellDark(text = "Važi do", isHeader = true, glowAlpha = glowAlpha, modifier = Modifier.weight(0.4f)) // Defaults to bodyMedium
+            DiscountCellDark(text = "Iznos", isHeader = true, glowAlpha = glowAlpha, modifier = Modifier.weight(0.4f))
         }
         
         // Data rows
         val rows = discountTable ?: emptyList()
         if (rows.isEmpty()) {
             Text(
-                text = "Нема података о попустима",
+                text = "Nema podataka o popustima",
                 color = CyberCyan.copy(alpha = 0.7f),
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(8.dp)
@@ -367,7 +378,9 @@ private fun DiscountCellDark(text: String, isHeader: Boolean, glowAlpha: Float, 
             color = if (isHeader) CyberCyan else Color.White,
             style = style,
             fontWeight = if (isHeader) FontWeight.Bold else FontWeight.Normal,
-            maxLines = 2
+
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
         )
     }
 }
@@ -446,7 +459,9 @@ private fun DiscountCellLight(text: String, isHeader: Boolean, modifier: Modifie
             color = if (isHeader) DeepTeal else SolarTextPrimary,
             style = style,
             fontWeight = if (isHeader) FontWeight.Bold else FontWeight.Normal,
-            maxLines = 2
+
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
         )
     }
 }
