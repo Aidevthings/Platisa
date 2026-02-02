@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+import com.platisa.app.core.domain.model.DiscountRow
 import com.platisa.app.core.domain.model.Receipt
 import com.platisa.app.core.domain.model.EpsData
 import com.platisa.app.core.domain.repository.ReceiptRepository
@@ -320,25 +321,35 @@ class ReviewReceiptViewModel @Inject constructor(
                 }
             } else {
                 // Insert new receipt
-                val receipt = Receipt(
-                    id = 0,
-                    merchantName = merchant,
-                    totalAmount = amount,
-                    date = date,
-                    dueDate = parsed?.dueDate, 
-                    imagePath = imageUriString,
-                    qrCodeData = parsed?.qrCodeData,
-                    invoiceNumber = invoiceNumber,
-                    savedQrUri = lastSavedQrUri,
-                    paymentStatus = if (lastSavedQrUri != null) com.platisa.app.core.domain.model.PaymentStatus.PROCESSING else com.platisa.app.core.domain.model.PaymentStatus.UNPAID,
-                    // CRITICAL: Save recipient and payer info!
-                    // FIX: Prioritize parsed (ReceiptParser) over eps (EpsParser)
-                    recipientName = parsed?.recipientName ?: eps?.recipientName,
-                    recipientAddress = parsed?.recipientAddress ?: eps?.recipientAddress,
-                    payerName = parsed?.payerName,
-                    payerAddress = parsed?.payerAddress
-                )
-                val receiptId = repository.insertReceipt(receipt, eps?.billingPeriod)
+                    // Serialize discount table to JSON for metadata storage
+                    // Serialize EPS base cost and deadline for lazy discount calculation on latest bill
+                    val epsMetadata = StringBuilder()
+                    if (eps?.electricityBaseCost != null) {
+                        epsMetadata.append("|EPS_BASE_COST:${eps.electricityBaseCost}")
+                    }
+                    if (eps?.discountDeadline != null) {
+                        epsMetadata.append("|EPS_DEADLINE:${eps.discountDeadline}")
+                    }
+                    val metadataWithDiscount = if (epsMetadata.isNotEmpty()) epsMetadata.toString() else null
+                    
+                    val receipt = Receipt(
+                        id = 0,
+                        merchantName = merchant,
+                        totalAmount = amount,
+                        date = date,
+                        dueDate = parsed?.dueDate, 
+                        imagePath = imageUriString,
+                        qrCodeData = parsed?.qrCodeData,
+                        invoiceNumber = invoiceNumber,
+                        savedQrUri = lastSavedQrUri,
+                        paymentStatus = if (lastSavedQrUri != null) com.platisa.app.core.domain.model.PaymentStatus.PROCESSING else com.platisa.app.core.domain.model.PaymentStatus.UNPAID,
+                        recipientName = parsed?.recipientName ?: eps?.recipientName,
+                        recipientAddress = parsed?.recipientAddress ?: eps?.recipientAddress,
+                        payerName = parsed?.payerName,
+                        payerAddress = parsed?.payerAddress,
+                        metadata = metadataWithDiscount
+                    )
+                    val receiptId = repository.insertReceipt(receipt, eps?.billingPeriod)
                 android.util.Log.d("ReviewVM", "✅ Receipt saved successfully! ID: $receiptId, Invoice: $invoiceNumber")
 
                 // Save EPS data for new receipts - use cached data which has Gemini's recipient info

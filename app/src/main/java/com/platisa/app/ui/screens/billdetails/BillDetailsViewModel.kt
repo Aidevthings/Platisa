@@ -2,6 +2,7 @@ package com.platisa.app.ui.screens.billdetails
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.platisa.app.core.domain.model.DiscountRow
 import com.platisa.app.core.domain.model.Receipt
 import com.platisa.app.core.domain.repository.ReceiptRepository
 import com.platisa.app.core.domain.repository.EpsDataRepository
@@ -23,6 +24,75 @@ class BillDetailsViewModel @Inject constructor(
 
     fun vibrate(type: com.platisa.app.core.common.VibrationHelper.HapticType) {
         vibrationHelper.vibrate(type)
+    }
+    
+    fun scheduleDiscountReminder(deadlines: List<String>) {
+        viewModelScope.launch {
+            try {
+                var scheduledCount = 0
+                // User Request: "One reminder for each date. Not three reminders for one date."
+                // Logic: Deduplicate dates. Schedule T-1 for each unique date.
+                
+                val uniqueDeadlines = deadlines
+                    .map { it.trim().removeSuffix(".") }
+                    .filter { it.isNotEmpty() }
+                    .distinct()
+                
+                val sdf = java.text.SimpleDateFormat("dd.MM.yyyy", java.util.Locale.getDefault())
+
+                for (cleanDateStr in uniqueDeadlines) {
+                    val date = sdf.parse(cleanDateStr) ?: continue
+
+                    // Schedule for T-1 (One day before)
+                    val calendar = java.util.Calendar.getInstance()
+                    calendar.time = date
+                    calendar.add(java.util.Calendar.DAY_OF_YEAR, -1)
+                    
+                    // Set time to 09:00 AM
+                    calendar.set(java.util.Calendar.HOUR_OF_DAY, 9)
+                    calendar.set(java.util.Calendar.MINUTE, 0)
+                    calendar.set(java.util.Calendar.SECOND, 0)
+                    
+                    // Check if date is in past
+                    if (calendar.timeInMillis < System.currentTimeMillis()) {
+                        continue
+                    }
+
+                    // Schedule Alarm
+                    val alarmManager = context.getSystemService(android.content.Context.ALARM_SERVICE) as android.app.AlarmManager
+                    val intent = android.content.Intent(context, com.platisa.app.core.notification.DiscountReminderReceiver::class.java).apply {
+                        putExtra(com.platisa.app.core.notification.DiscountReminderReceiver.EXTRA_MERCHANT_NAME, "EPS") 
+                        putExtra(com.platisa.app.core.notification.DiscountReminderReceiver.EXTRA_EXPIRY_DATE, cleanDateStr)
+                    }
+                    
+                    val pendingIntent = android.app.PendingIntent.getBroadcast(
+                        context,
+                        cleanDateStr.hashCode(), // Unique RequestCode per unique date
+                        intent,
+                        android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+                    )
+
+                    alarmManager.set(
+                        android.app.AlarmManager.RTC_WAKEUP, 
+                        calendar.timeInMillis, 
+                        pendingIntent
+                    )
+                    scheduledCount++
+                }
+                
+                // Feedback
+                if (scheduledCount > 0) {
+                     val message = if (scheduledCount == 1) "Podsetnik zakazan." else "$scheduledCount podsetnika zakazana."
+                     com.platisa.app.core.common.SnackbarManager.showMessage(message)
+                } else {
+                     com.platisa.app.core.common.SnackbarManager.showMessage("Nema validnih datuma u budućnosti.")
+                }
+                
+            } catch (e: Exception) {
+                android.util.Log.e("BillDetailsVM", "Failed to schedule reminder", e)
+                com.platisa.app.core.common.SnackbarManager.showMessage("Greška pri zakazivanju.")
+            }
+        }
     }
 
     private val _billDetails = MutableStateFlow<BillDetailsState>(BillDetailsState.Loading)
@@ -104,6 +174,18 @@ class BillDetailsViewModel @Inject constructor(
                         }
                     }
 
+                    // Lazy calculate discounts for LATEST bill only
+                    // This satisfies the requirement: "We don't scan anything else but the latest bill only"
+                    val electricityBaseCost = parseBaseCostFromMetadata(receipt.metadata)
+                    val discountDeadline = parseDeadlineFromMetadata(receipt.metadata)
+                    
+                    val discountTable = if (isLatest && electricityBaseCost != null) {
+                        calculateDiscountTable(electricityBaseCost, discountDeadline)
+                    } else {
+                        // For older bills (or non-EPS), we strictly do NOT show discounts
+                        null 
+                    }
+
                     // 3. Update UI State
                     _billDetails.value = BillDetailsState.Success(
                         receipt = receipt,
@@ -115,7 +197,8 @@ class BillDetailsViewModel @Inject constructor(
                         localUnpaidSum = localUnpaidSum,
                         smartTotalDebt = smartTotalDebt,
                         paidPastBillsSum = paidPastBillsSum,
-                        billDebt = billDebt
+                        billDebt = billDebt,
+                        discountTable = discountTable
                     )
                     
                     // Load receipt items (for fiscal receipts)
@@ -285,6 +368,52 @@ class BillDetailsViewModel @Inject constructor(
             else -> BillType.PHONE // Default fallback
         }
     }
+
+    /**
+     * Parse discount table from Receipt metadata.
+     * Format: [DISCOUNT:5%~deadline1~amount1|6%~deadline2~amount2|...]
+     */
+    private fun parseBaseCostFromMetadata(metadata: String?): java.math.BigDecimal? {
+        if (metadata.isNullOrBlank()) return null
+        val match = Regex("""EPS_BASE_COST:([\d.,]+)""").find(metadata)
+        val valueStr = match?.groupValues?.get(1) ?: return null
+        // Normalize format (replace comma with dot if needed)
+        /* 
+           Using BigDecimal constructor directly might fail with commas. 
+           We should normalize or use a formatter. 
+           Assuming raw string from BigDecimal.toString() usually uses dot, 
+           but let's be safe if we serialized it differently.
+        */
+        return try {
+            java.math.BigDecimal(valueStr.replace(",", "."))
+        } catch (e: Exception) { null }
+    }
+
+    private fun parseDeadlineFromMetadata(metadata: String?): String? {
+        if (metadata.isNullOrBlank()) return null
+        val match = Regex("""EPS_DEADLINE:(.+?)(?:\||$)""").find(metadata)
+        return match?.groupValues?.get(1)
+    }
+
+    private fun calculateDiscountTable(baseCost: java.math.BigDecimal, deadline: String?): List<DiscountRow> {
+        val discountRows = mutableListOf<DiscountRow>()
+        val baseDeadline = deadline ?: ""
+        val amountDouble = baseCost.toDouble()
+
+        val discountPercentages = listOf(5, 6, 7)
+        for (pct in discountPercentages) {
+            val discountAmount = amountDouble * pct / 100
+            val formattedAmount = String.format("%.2f", discountAmount).replace(".", ",")
+
+            // User Request: "On the second column... we only want date to appear"
+            // We strip the "za uplatu do..." text and just provide the date or "Odmah" if empty
+            val condition = if (baseDeadline.isNotEmpty()) baseDeadline else "Odmah"
+            
+            discountRows.add(DiscountRow("$pct%", condition, formattedAmount))
+        }
+        return discountRows
+    }
+
 }
 
 sealed class BillDetailsState {
@@ -299,7 +428,8 @@ sealed class BillDetailsState {
         val localUnpaidSum: Double = 0.0,
         val smartTotalDebt: Double = 0.0,
         val paidPastBillsSum: Double = 0.0,
-        val billDebt: Double = 0.0
+        val billDebt: Double = 0.0,
+        val discountTable: List<DiscountRow>? = null
     ) : BillDetailsState()
     data class Error(val message: String) : BillDetailsState()
 }

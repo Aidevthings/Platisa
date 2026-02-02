@@ -2,7 +2,7 @@ package com.platisa.app.ui.screens.billdetails
 
 import android.content.Context
 import com.platisa.app.core.common.VibrationHelper
-import com.platisa.app.core.data.repository.EpsDataRepository
+import com.platisa.app.core.domain.repository.EpsDataRepository
 import com.platisa.app.core.domain.model.Receipt
 import com.platisa.app.core.domain.repository.ReceiptRepository
 import io.mockk.coEvery

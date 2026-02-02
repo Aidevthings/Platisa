@@ -336,7 +336,10 @@ class SyncReceiptsUseCase @Inject constructor(
                 recipientAddress = finalRecipientAddress,
                 currentMonthAmount = epsData?.currentMonthAmount,
                 previousDebtAmount = epsData?.previousDebtAmount,
-                metadata = "SOURCE_EMAIL:$accountEmail|GMAIL_ID:$externalId", // Store original Gmail ID
+
+                metadata = "SOURCE_EMAIL:$accountEmail|GMAIL_ID:$externalId" + 
+                           (if (epsData?.electricityBaseCost != null) "|EPS_BASE_COST:${epsData.electricityBaseCost}" else "") +
+                           (if (epsData?.discountDeadline != null) "|EPS_DEADLINE:${epsData.discountDeadline}" else ""), 
                 paymentStatus = initialStatus
             )
 

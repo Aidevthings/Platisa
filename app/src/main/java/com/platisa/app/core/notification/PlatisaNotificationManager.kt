@@ -25,11 +25,13 @@ class PlatisaNotificationManager @Inject constructor(
         private const val CHANNEL_ID_OVERDUE = "bill_overdue"
         private const val CHANNEL_ID_DUPLICATE = "duplicate_warning"
         private const val CHANNEL_ID_AUTH = "auth_errors"
+        private const val CHANNEL_ID_DISCOUNT = "discount_reminders"
         
         private const val NOTIFICATION_ID_DUE_3_DAYS = 1001
         private const val NOTIFICATION_ID_DUE_1_DAY = 1002
         private const val NOTIFICATION_ID_OVERDUE = 1003
         private const val NOTIFICATION_ID_DUPLICATE = 1004
+        private const val NOTIFICATION_ID_DISCOUNT = 1005
         private const val NOTIFICATION_ID_AUTH = 1100
     }
     
@@ -73,10 +75,19 @@ class PlatisaNotificationManager @Inject constructor(
                 description = "Obaveštenja o problemima sa prijavljivanjem"
             }
             
+            val discountChannel = NotificationChannel(
+                CHANNEL_ID_DISCOUNT,
+                "Podsetnici za popuste",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Podsetnici za isticanje popusta na računima"
+            }
+            
             notificationManager.createNotificationChannel(dueSoonChannel)
             notificationManager.createNotificationChannel(overdueChannel)
             notificationManager.createNotificationChannel(duplicateChannel)
             notificationManager.createNotificationChannel(authChannel)
+            notificationManager.createNotificationChannel(discountChannel)
         }
     }
     
@@ -271,6 +282,19 @@ class PlatisaNotificationManager @Inject constructor(
         } catch (e: SecurityException) {
             e.printStackTrace()
         }
+    }
+    
+    fun showDiscountExpiringNotification(merchantName: String, expiryDate: String) {
+        val title = "⏳ Popust uskoro ističe!"
+        val message = "Ne zaboravite da platite račun za $merchantName. Popust važi do $expiryDate."
+        
+        showNotification(
+            notificationId = (NOTIFICATION_ID_DISCOUNT + System.currentTimeMillis() % 1000).toInt(), // Unique ID per notification
+            channelId = CHANNEL_ID_DISCOUNT,
+            title = title,
+            message = message,
+            priority = NotificationCompat.PRIORITY_HIGH
+        )
     }
     
     private fun showNotification(

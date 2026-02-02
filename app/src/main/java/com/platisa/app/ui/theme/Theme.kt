@@ -125,11 +125,16 @@ fun PlatisaTheme(
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
-            val window = (view.context as Activity).window
-            window.statusBarColor = colorScheme.background.toArgb()
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
+            val window = view.context.findActivity()?.window
+            if (window != null) {
+                window.statusBarColor = colorScheme.background.toArgb()
+                WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
+            }
         }
     }
+
+    // ... (rest of function)
+
 
     // Limit Font Scale to max 1.3x prevents layout breakage on devices with extreme accessibility settings
     val currentDensity = androidx.compose.ui.platform.LocalDensity.current
@@ -238,3 +243,13 @@ object PlatisaTheme {
         get() = LocalPlatisaColors.current
 }
 
+
+// Helper to safely find Activity from Context (e.g. valid inside Dialogs)
+private fun android.content.Context.findActivity(): Activity? {
+    var context = this
+    while (context is android.content.ContextWrapper) {
+        if (context is Activity) return context
+        context = context.baseContext
+    }
+    return null
+}

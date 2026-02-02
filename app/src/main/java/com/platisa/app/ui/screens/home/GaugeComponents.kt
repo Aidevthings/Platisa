@@ -138,10 +138,8 @@ fun GaugePanel(
                 contentDescription = "Celebration Dance",
                 modifier = Modifier
                     .fillMaxSize()
-                    .fillMaxSize()
-                    .scale(if (customColors.isDark) 1.0f else 1.1f) // No zoom for Dark Mode, zoom for Light Mode
                     .alpha(0.9f), // Almost fully opaque for the dancing man
-                contentScale = androidx.compose.ui.layout.ContentScale.Crop // Crop ensures we fill the entire space
+                contentScale = androidx.compose.ui.layout.ContentScale.Fit // Fit ensures the entire animation is visible
             )
         } else {
             // Currency Indicators

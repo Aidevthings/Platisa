@@ -66,6 +66,8 @@ fun ProfileScreen(
     val nameFocusRequester = remember { FocusRequester() }
     var hasSelectedOnFocus by remember { mutableStateOf(false) }
     
+    // Debug removed
+
     // Reset state when dialog opens
     LaunchedEffect(showNameDialog) {
         if (showNameDialog) {
@@ -117,7 +119,6 @@ fun ProfileScreen(
     }
     
     // Camera permission launcher - opens front camera
-    // Camera permission launcher - opens front camera
     val cameraPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
@@ -138,12 +139,12 @@ fun ProfileScreen(
         }
     }
 
-
     BaseScreen(viewModel = viewModel) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
+                .systemBarsPadding() // Ensure content is not behind status bar
         ) {
             Column(
                 modifier = Modifier.fillMaxSize()
@@ -171,6 +172,8 @@ fun ProfileScreen(
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onBackground
                     )
+                    
+                    // Debug removed
                 }
 
                 // Scrollable Content

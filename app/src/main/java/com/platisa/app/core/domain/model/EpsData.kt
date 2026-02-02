@@ -3,6 +3,16 @@ package com.platisa.app.core.domain.model
 import java.math.BigDecimal
 import java.util.Date
 
+/**
+ * Represents a single row from the EPS discount table.
+ * Contains early payment discount information.
+ */
+data class DiscountRow(
+    val percentage: String,  // e.g., "5%", "6%", "7%"
+    val deadline: String,    // e.g., "за уплату до 28.11.2025.г."
+    val amount: String       // e.g., "29,04" (savings in dinars)
+)
+
 data class EpsData(
     val edNumber: String?,
     val billingPeriod: String?,
@@ -21,7 +31,12 @@ data class EpsData(
     val dueDate: Date?,                  // Rok plaćanja
     val paymentId: String?,              // Jedinstveni Payment ID
     val recipientName: String? = null,
-    val recipientAddress: String? = null
+    val recipientAddress: String? = null,
+    // Early payment discount info (Base cost for calculation)
+    val electricityBaseCost: BigDecimal? = null,
+    val discountDeadline: String? = null,
+    // Note: discountTable is removed to support lazy calculation only for the latest bill
+    // val discountTable: List<DiscountRow>? = null
 ) {
     companion object {
         /**

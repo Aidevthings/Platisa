@@ -127,6 +127,35 @@ fun BillDetailsScreen(
             }
         }
         is BillDetailsState.Success -> {
+            // Determine if popup should be shown:
+            // Only for ELECTRICITY bills AND only for the LATEST bill (cascade payment system)
+            val shouldShowPopup = state.billType == BillType.ELECTRICITY && state.isLatestForMerchant
+            
+            // State to control popup visibility
+            var showDiscountPopup by remember { mutableStateOf(shouldShowPopup) }
+            
+            // Debug logging
+            android.util.Log.d("BillDetails", "🎯 POPUP: billType=${state.billType}, isLatest=${state.isLatestForMerchant}, shouldShow=$shouldShowPopup, showState=$showDiscountPopup")
+            
+            // Show discount popup overlay (only for latest electricity bills)
+            if (showDiscountPopup) {
+                android.util.Log.d("BillDetails", "🎉 POPUP: Rendering DiscountPopup for latest electricity bill!")
+                DiscountPopup(
+                    discountTable = state.discountTable,
+                    onDismiss = { 
+                        android.util.Log.d("BillDetails", "👋 POPUP: Dismissed by user")
+                        showDiscountPopup = false 
+                    },
+                    onRemind = {
+                        // Schedule reminder for the discount deadline
+                        // We extract ALL deadlines from the table and let the VM logic decide (T-1, dedup)
+                        val deadlines = state.discountTable?.mapNotNull { it.deadline } ?: emptyList()
+                        viewModel.scheduleDiscountReminder(deadlines)
+                        showDiscountPopup = false
+                    }
+                )
+            }
+            
             BillDetailsContent(
                 navController = navController,
                 receipt = state.receipt,

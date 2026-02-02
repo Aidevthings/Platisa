@@ -1,5 +1,6 @@
 package com.platisa.app.core.data.parser
 
+import com.platisa.app.core.domain.model.DiscountRow
 import com.platisa.app.core.domain.model.EpsData
 import java.math.BigDecimal
 import java.text.SimpleDateFormat
@@ -92,6 +93,17 @@ object EpsParser {
         }
         
         val (recipientName, recipientAddress) = extractRecipientInfo()
+        
+        // Extract early payment discount table
+        // Discounts apply to electricity cost ONLY (before taxes), not total bill
+        // If we can't find the electricity base cost, don't show discount data
+        val electricityCost = extractElectricityCost(normalizedText, totalKwh)
+        android.util.Log.d("EpsParser", "💰 Electricity base cost: ${electricityCost ?: "not found"}")
+
+        // Extract deadline for discount (e.g. "do 28.11.2025 godine")
+        val deadlinePattern = Regex("""до\s+(\d{1,2}\.\d{1,2}\.\d{4})\.?\s*године""", RegexOption.IGNORE_CASE)
+        val deadlineMatch = deadlinePattern.find(normalizedText)
+        val discountDeadline = deadlineMatch?.groupValues?.get(1)
 
         return EpsData(
             edNumber = extractEdNumber(normalizedText),
@@ -110,7 +122,9 @@ object EpsParser {
 
             recipientAddress = recipientAddress,
             currentMonthAmount = currentAmount,
-            previousDebtAmount = previousDebt
+            previousDebtAmount = previousDebt,
+            electricityBaseCost = electricityCost,
+            discountDeadline = discountDeadline
         )
     }
 
@@ -169,6 +183,60 @@ object EpsParser {
                 if (amount != null) return amount
             }
         }
+        return null
+    }
+
+    /**
+     * Extracts "ЗАДУЖЕЊЕ ЗА ЕЛЕКТРИЧНУ ЕНЕРГИЈУ У ОБРАЧУНСКОМ ПЕРИОДУ" (Electricity cost only).
+     * This is the BASE electricity cost BEFORE taxes/fees - what discounts apply to.
+     * 
+     * Example from EPS bill page 2:
+     * "4 ЗАДУЖЕЊЕ ЗА ЕЛЕКТРИЧНУ ЕНЕРГИЈУ У ОБРАЧУНСКОМ ПЕРИОДУ (1+2+3): 10.317,93"
+     * 
+     * If not found on page 2, falls back to calculation: consumption (kWh) × price per kWh
+     */
+    private fun extractElectricityCost(text: String, consumptionKwh: BigDecimal?): BigDecimal? {
+        android.util.Log.d("EpsParser", "🔌 Looking for electricity base cost...")
+        
+        // Pattern 1: Direct extraction from page 2 table
+        // "ЗАДУЖЕЊЕ ЗА ЕЛЕКТРИЧНУ ЕНЕРГИЈУ У ОБРАЧУНСКОМ ПЕРИОДУ (1+2+3)  10.317,93"
+        val directPatterns = listOf(
+            // Full pattern with sum notation
+            Regex("""ЗАДУЖЕЊЕ\s+ЗА\s+ЕЛЕКТРИЧНУ\s+ЕНЕРГИЈУ\s+У\s+ОБРАЧУНСКОМ\s+ПЕРИОДУ\s*\([^)]+\)\s*[:\s]*([\d.,]+)""", RegexOption.IGNORE_CASE),
+            // Simpler pattern
+            Regex("""ЗАДУЖЕЊЕ\s+ЗА\s+ЕЛЕКТРИЧНУ\s+ЕНЕРГИЈУ[^0-9]*?([\d.,]+)""", RegexOption.IGNORE_CASE),
+            // Latin variant
+            Regex("""ZADUZENJE\s+ZA\s+ELEKTRICNU\s+ENERGIJU[^0-9]*?([\d.,]+)""", RegexOption.IGNORE_CASE)
+        )
+        
+        for (regex in directPatterns) {
+            val match = regex.find(text)
+            if (match != null) {
+                val amount = parseAmount(match.groupValues[1])
+                if (amount != null && amount > BigDecimal("100")) {
+                    android.util.Log.d("EpsParser", "✅ Found electricity cost directly: $amount RSD")
+                    return amount
+                }
+            }
+        }
+        
+        // Pattern 2: Extract price per kWh and calculate
+        // "Остварена просечна цена електричне енергије (дин/kWh): 9,79"
+        if (consumptionKwh != null && consumptionKwh > BigDecimal.ZERO) {
+            val pricePattern = Regex("""[Оо]старена\s+просечна\s+цена[^:]*:\s*([\d.,]+)""", RegexOption.IGNORE_CASE)
+            val priceMatch = pricePattern.find(text)
+            
+            if (priceMatch != null) {
+                val pricePerKwh = parseAmount(priceMatch.groupValues[1])
+                if (pricePerKwh != null && pricePerKwh > BigDecimal.ZERO) {
+                    val calculatedCost = consumptionKwh.multiply(pricePerKwh)
+                    android.util.Log.d("EpsParser", "✅ Calculated electricity cost: $consumptionKwh kWh × $pricePerKwh = $calculatedCost RSD")
+                    return calculatedCost
+                }
+            }
+        }
+        
+        android.util.Log.d("EpsParser", "❌ Could not extract electricity base cost")
         return null
     }
 
@@ -741,7 +809,6 @@ object EpsParser {
         }
         return null
     }
+
+
 }
-
-
-
