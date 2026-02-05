@@ -50,6 +50,7 @@ object EpsParser {
         }
 
         val isStorno = detectStorno(normalizedText)
+        val isCorrection = detectCorrection(normalizedText)
         val dueDate = extractDueDate(normalizedText)
         
         android.util.Log.d("EpsParser", "=== IZVUČENI PODACI ZA DUPLIKAT DETEKCIJU ===")
@@ -94,17 +95,6 @@ object EpsParser {
         
         val (recipientName, recipientAddress) = extractRecipientInfo()
         
-        // Extract early payment discount table
-        // Discounts apply to electricity cost ONLY (before taxes), not total bill
-        // If we can't find the electricity base cost, don't show discount data
-        val electricityCost = extractElectricityCost(normalizedText, totalKwh)
-        android.util.Log.d("EpsParser", "💰 Electricity base cost: ${electricityCost ?: "not found"}")
-
-        // Extract deadline for discount (e.g. "do 28.11.2025 godine")
-        val deadlinePattern = Regex("""до\s+(\d{1,2}\.\d{1,2}\.\d{4})\.?\s*године""", RegexOption.IGNORE_CASE)
-        val deadlineMatch = deadlinePattern.find(normalizedText)
-        val discountDeadline = deadlineMatch?.groupValues?.get(1)
-
         return EpsData(
             edNumber = extractEdNumber(normalizedText),
             billingPeriod = extractPeriod(normalizedText),
@@ -116,15 +106,17 @@ object EpsParser {
             periodStart = periodStart,
             periodEnd = finalDate,
             isStorno = isStorno,
+            isCorrection = isCorrection,
             dueDate = dueDate,
             paymentId = paymentId,
             recipientName = recipientName,
-
             recipientAddress = recipientAddress,
             currentMonthAmount = currentAmount,
             previousDebtAmount = previousDebt,
-            electricityBaseCost = electricityCost,
-            discountDeadline = discountDeadline
+            electricityBaseCost = null, // No longer scanning page 2
+            discountDeadline = null,
+            discountThresholdAmount = null,
+            discountThresholdMessage = null
         )
     }
 
@@ -186,59 +178,6 @@ object EpsParser {
         return null
     }
 
-    /**
-     * Extracts "ЗАДУЖЕЊЕ ЗА ЕЛЕКТРИЧНУ ЕНЕРГИЈУ У ОБРАЧУНСКОМ ПЕРИОДУ" (Electricity cost only).
-     * This is the BASE electricity cost BEFORE taxes/fees - what discounts apply to.
-     * 
-     * Example from EPS bill page 2:
-     * "4 ЗАДУЖЕЊЕ ЗА ЕЛЕКТРИЧНУ ЕНЕРГИЈУ У ОБРАЧУНСКОМ ПЕРИОДУ (1+2+3): 10.317,93"
-     * 
-     * If not found on page 2, falls back to calculation: consumption (kWh) × price per kWh
-     */
-    private fun extractElectricityCost(text: String, consumptionKwh: BigDecimal?): BigDecimal? {
-        android.util.Log.d("EpsParser", "🔌 Looking for electricity base cost...")
-        
-        // Pattern 1: Direct extraction from page 2 table
-        // "ЗАДУЖЕЊЕ ЗА ЕЛЕКТРИЧНУ ЕНЕРГИЈУ У ОБРАЧУНСКОМ ПЕРИОДУ (1+2+3)  10.317,93"
-        val directPatterns = listOf(
-            // Full pattern with sum notation
-            Regex("""ЗАДУЖЕЊЕ\s+ЗА\s+ЕЛЕКТРИЧНУ\s+ЕНЕРГИЈУ\s+У\s+ОБРАЧУНСКОМ\s+ПЕРИОДУ\s*\([^)]+\)\s*[:\s]*([\d.,]+)""", RegexOption.IGNORE_CASE),
-            // Simpler pattern
-            Regex("""ЗАДУЖЕЊЕ\s+ЗА\s+ЕЛЕКТРИЧНУ\s+ЕНЕРГИЈУ[^0-9]*?([\d.,]+)""", RegexOption.IGNORE_CASE),
-            // Latin variant
-            Regex("""ZADUZENJE\s+ZA\s+ELEKTRICNU\s+ENERGIJU[^0-9]*?([\d.,]+)""", RegexOption.IGNORE_CASE)
-        )
-        
-        for (regex in directPatterns) {
-            val match = regex.find(text)
-            if (match != null) {
-                val amount = parseAmount(match.groupValues[1])
-                if (amount != null && amount > BigDecimal("100")) {
-                    android.util.Log.d("EpsParser", "✅ Found electricity cost directly: $amount RSD")
-                    return amount
-                }
-            }
-        }
-        
-        // Pattern 2: Extract price per kWh and calculate
-        // "Остварена просечна цена електричне енергије (дин/kWh): 9,79"
-        if (consumptionKwh != null && consumptionKwh > BigDecimal.ZERO) {
-            val pricePattern = Regex("""[Оо]старена\s+просечна\s+цена[^:]*:\s*([\d.,]+)""", RegexOption.IGNORE_CASE)
-            val priceMatch = pricePattern.find(text)
-            
-            if (priceMatch != null) {
-                val pricePerKwh = parseAmount(priceMatch.groupValues[1])
-                if (pricePerKwh != null && pricePerKwh > BigDecimal.ZERO) {
-                    val calculatedCost = consumptionKwh.multiply(pricePerKwh)
-                    android.util.Log.d("EpsParser", "✅ Calculated electricity cost: $consumptionKwh kWh × $pricePerKwh = $calculatedCost RSD")
-                    return calculatedCost
-                }
-            }
-        }
-        
-        android.util.Log.d("EpsParser", "❌ Could not extract electricity base cost")
-        return null
-    }
 
     /**
      * Normalize OCR text by fixing common Latin↔Cyrillic character confusions.
@@ -383,16 +322,51 @@ object EpsParser {
     /**
      * Detektuje da li je račun STORNO.
      */
+    /**
+     * Detektuje da li je račun STORNO.
+     * Use strict word boundaries to avoid false positives (e.g. "Prostorno", "Istorija").
+     */
     private fun detectStorno(text: String): Boolean {
-        val stornoPatterns = listOf(
-            Regex("""СТОРНО""", RegexOption.IGNORE_CASE),
-            Regex("""STORNO""", RegexOption.IGNORE_CASE),
-            Regex("""-\s*СТОРНО""", RegexOption.IGNORE_CASE),
-            Regex("""-\s*STORNO""", RegexOption.IGNORE_CASE)
+        // STRICTER PATTERNS: Must be whole word "STORNO" or "СТОРНО"
+        // Ideally, it should be associated with "Račun", "Tip", "Dokument"
+        
+        val strictPatterns = listOf(
+            Regex("""\bСТОРНО\b""", RegexOption.IGNORE_CASE),
+            Regex("""\bSTORNO\b""", RegexOption.IGNORE_CASE),
+            Regex("""-\s*СТОРНО""", RegexOption.IGNORE_CASE), // Often appears as line item " - STORNO"
+            Regex("""-\s*STORNO""", RegexOption.IGNORE_CASE),
+            Regex("""Tip\s+računa\s*:\s*Storno""", RegexOption.IGNORE_CASE),
+            Regex("""Tip\s+računa\s*:\s*Сторно""", RegexOption.IGNORE_CASE)
         )
-        val isStorno = stornoPatterns.any { it.containsMatchIn(text) }
-        android.util.Log.d("EpsParser", "STORNO detekcija: $isStorno")
+        
+        // Anti-patterns: Contexts where "Storno" might appear but NOT mean the bill is Storno
+        // (Currently none specific, but keeping logic structure ready)
+
+        val isStorno = strictPatterns.any { it.containsMatchIn(text) }
+        
+        if (isStorno) {
+            android.util.Log.d("EpsParser", "⚠️ STORNO DETECTED (Strict Check)")
+        }
+        
         return isStorno
+    }
+
+    /**
+     * Detektuje da li je račun KORIGOVAN (ispravljen).
+     */
+    private fun detectCorrection(text: String): Boolean {
+        val patterns = listOf(
+            Regex("""\bКОРИГОВАН\b""", RegexOption.IGNORE_CASE),
+            Regex("""\bKORIGOVAN\b""", RegexOption.IGNORE_CASE),
+            Regex("""(?:JANUAR|FEBRUAR|MART|APRIL|MAJ|JUN|JUL|AVGUST|SEPTEMBAR|OKTOBAR|NOVEMBAR|DECEMBAR).{0,50}КОРИГОВАН""", RegexOption.IGNORE_CASE),
+            Regex("""(?:JANUAR|FEBRUAR|MART|APRIL|MAJ|JUN|JUL|AVGUST|SEPTEMBAR|OKTOBAR|NOVEMBAR|DECEMBAR).{0,50}KORIGOVAN""", RegexOption.IGNORE_CASE)
+        )
+        
+        val isCorrection = patterns.any { it.containsMatchIn(text) }
+        if (isCorrection) {
+            android.util.Log.d("EpsParser", "📝 CORRECTION DETECTED (KORIGOVAN)")
+        }
+        return isCorrection
     }
 
     /**
@@ -810,5 +784,9 @@ object EpsParser {
         return null
     }
 
+
+    private fun formatAmount(amount: BigDecimal): String {
+        return String.format("%,.2f", amount).replace(",", "X").replace(".", ",").replace("X", ".")
+    }
 
 }

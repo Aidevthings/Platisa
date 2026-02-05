@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "1072565451838-4i5b4kgnu2nsohrv36ja9bbvq6fln505.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.platisa.app",
+            "certificate_hash": "f945aec13a7c348f6f86e18258513b625f58f9f0"
+          }
+        },
+        {
           "client_id": "1072565451838-ir8600bt37djln20emanvps0ibdu2d89.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {

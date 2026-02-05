@@ -15,6 +15,12 @@ interface ReceiptRepository {
     suspend fun getReceiptByInvoiceNumber(invoiceNumber: String): Receipt?  // For deduplication
     suspend fun getReceiptsByAmount(amount: java.math.BigDecimal): List<Receipt> // For fuzzy deduplication
     suspend fun insertReceipt(receipt: Receipt, billingPeriod: String? = null): Long
+    suspend fun insertReceiptWithData(
+        receipt: Receipt, 
+        epsData: EpsData? = null, 
+        items: List<com.platisa.app.core.domain.model.ReceiptItem>? = null,
+        billingPeriod: String? = null
+    ): Long
     suspend fun insertReceipts(receipts: List<Receipt>): List<Long> // Batch insert
     suspend fun insertEpsData(epsData: EpsData, receiptId: Long)
     fun getEpsAnalyticsData(): Flow<List<EpsMonthData>>

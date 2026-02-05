@@ -48,7 +48,12 @@ data class ReceiptEntity(
     val recipientName: String? = null,
     val recipientAddress: String? = null,
     val payerName: String? = null,
-    val payerAddress: String? = null
+    val payerAddress: String? = null,
+    
+    // Anomaly Detection
+    val isAnomalyConfirmed: Boolean = false,
+    val anomalyType: String? = null, // "LOW_AVG", "DROP_SPIKE"
+    val anomalyMessage: String? = null
 )
 
 enum class SyncStatus {

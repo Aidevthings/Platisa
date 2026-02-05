@@ -8,7 +8,7 @@ echo.
 adb devices
 echo.
 echo Uninstalling old version...
-adb uninstall com.example.platisa
+adb uninstall com.platisa.app
 echo.
 echo Installing new APK...
 adb install -r app\build\outputs\apk\debug\app-debug.apk

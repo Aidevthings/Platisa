@@ -28,6 +28,7 @@ data class EpsData(
     val periodStart: Date?,              // Period start date
     val periodEnd: Date?,                // Period end date
     val isStorno: Boolean = false,       // Da li je STORNO racun
+    val isCorrection: Boolean = false,   // Da li je KORIGOVAN (ispravljen) racun
     val dueDate: Date?,                  // Rok plaćanja
     val paymentId: String?,              // Jedinstveni Payment ID
     val recipientName: String? = null,
@@ -35,6 +36,8 @@ data class EpsData(
     // Early payment discount info (Base cost for calculation)
     val electricityBaseCost: BigDecimal? = null,
     val discountDeadline: String? = null,
+    val discountThresholdAmount: BigDecimal? = null,
+    val discountThresholdMessage: String? = null,
     // Note: discountTable is removed to support lazy calculation only for the latest bill
     // val discountTable: List<DiscountRow>? = null
 ) {

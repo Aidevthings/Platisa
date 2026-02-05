@@ -55,7 +55,6 @@ fun DynamicSizeText(
         
         // Binary search for optimal font size
         val optimalFontSize = remember(text, availableWidthPx, shadow) {
-            var currentSize = maxFontSize.value
             val minSize = minFontSize.value
             
             // Quick check if even max size fits

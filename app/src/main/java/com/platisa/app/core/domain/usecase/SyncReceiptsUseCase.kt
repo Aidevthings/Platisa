@@ -22,6 +22,9 @@ import java.util.Date
 import javax.inject.Inject
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import com.platisa.app.core.data.helper.BillAnomalyDetector
+import com.platisa.app.core.data.helper.AnomalyResult
+import com.platisa.app.core.data.mapper.toEntity
 
 data class SyncStats(
     val emailsFound: Int = 0,
@@ -31,12 +34,15 @@ data class SyncStats(
     val errors: List<String> = emptyList()
 )
 
+
+
 class SyncReceiptsUseCase @Inject constructor(
     @ApplicationContext private val context: Context,
     private val gmailRepository: GmailRepository,
     private val receiptRepository: ReceiptRepository,
     private val secureStorage: com.platisa.app.core.domain.SecureStorage,
-    private val firestoreRepository: com.platisa.app.core.data.repository.FirestoreRepository
+    private val firestoreRepository: com.platisa.app.core.data.repository.FirestoreRepository,
+    private val anomalyDetector: BillAnomalyDetector
 ) {
 
     suspend operator fun invoke(forceResync: Boolean = false, lookbackDays: Int? = null): SyncStats {
@@ -229,10 +235,10 @@ class SyncReceiptsUseCase @Inject constructor(
             return
         }
         
-        // Try QR code extraction first for PDFs
         var qrAmount: BigDecimal? = null
         var merchantName: String? = null
         var qrCodeData: String? = null
+        var ipsReferenceNumber: String? = null
         
         if (file.extension.equals("pdf", ignoreCase = true)) {
             val qrContent = PdfUtils.extractQrCode(file)
@@ -241,6 +247,10 @@ class SyncReceiptsUseCase @Inject constructor(
                 val ipsData = IpsParser.parse(qrContent)
                 if (ipsData != null) {
                     qrAmount = ipsData.amount
+                    // FIX: Capture the refined Reference Number (Bill Number) from IPS
+                    // This creates the correct dynamic ID for JKP Infostan (e.g. 2026/01-XXXXXX)
+                    ipsReferenceNumber = ipsData.referenceNumber
+                    
                     merchantName = ipsData.recipientName?.let { 
                         ReceiptParser.cleanMerchantName(it) 
                     }
@@ -284,6 +294,7 @@ class SyncReceiptsUseCase @Inject constructor(
             android.util.Log.d("SyncReceiptsUseCase", "📄 Naplatni: ${epsData?.naplatniBroj}")
             android.util.Log.d("SyncReceiptsUseCase", "📄 PaymentId: ${epsData?.paymentId}")
             android.util.Log.d("SyncReceiptsUseCase", "📄 Invoice: ${epsData?.invoiceNumber}")
+            android.util.Log.d("SyncReceiptsUseCase", "📄 IPS Ref: $ipsReferenceNumber")
             android.util.Log.d("SyncReceiptsUseCase", "📄 Period: ${epsData?.periodStart} - ${epsData?.periodEnd}")
             android.util.Log.d("SyncReceiptsUseCase", "📄 STORNO: ${epsData?.isStorno}")
             android.util.Log.d("SyncReceiptsUseCase", "📄 Parsed Amount: ${parsed.totalAmount}")
@@ -318,6 +329,20 @@ class SyncReceiptsUseCase @Inject constructor(
             }
             
             // Create PRELIMINARY receipt to generate Deterministic ID
+            val isInfostan = finalMerchant.contains("INFOSTAN", ignoreCase = true) || 
+                             finalMerchant.contains("JKP", ignoreCase = true) ||
+                             finalMerchant.contains("ИНФОСТАН", ignoreCase = true)
+
+            // FIX for Infostan: User explicitly wants "Broj računa" (top of bill) 
+            // instead of "Poziv na broj" (QR RO / bottom of bill).
+            // Text parser (parsed.invoiceNumber) extracts "Broj računa".
+            // QR parser (ipsReferenceNumber) extracts "Poziv na broj".
+            val finalInvoiceNumber = if (isInfostan) {
+                 parsed.invoiceNumber ?: ipsReferenceNumber ?: epsData?.invoiceNumber
+            } else {
+                 ipsReferenceNumber ?: epsData?.invoiceNumber ?: parsed.invoiceNumber
+            }
+
             val baseReceipt = Receipt(
                 merchantName = finalMerchant,
                 totalAmount = totalAmount,
@@ -325,7 +350,7 @@ class SyncReceiptsUseCase @Inject constructor(
                 dueDate = epsData?.dueDate ?: parsed.dueDate,
                 imagePath = file.absolutePath,
                 qrCodeData = qrCodeData,
-                invoiceNumber = epsData?.invoiceNumber ?: parsed.invoiceNumber,
+                invoiceNumber = finalInvoiceNumber,
                 naplatniNumber = epsData?.naplatniBroj,
                 paymentId = epsData?.paymentId,
                 isStorno = epsData?.isStorno ?: false,
@@ -339,7 +364,11 @@ class SyncReceiptsUseCase @Inject constructor(
 
                 metadata = "SOURCE_EMAIL:$accountEmail|GMAIL_ID:$externalId" + 
                            (if (epsData?.electricityBaseCost != null) "|EPS_BASE_COST:${epsData.electricityBaseCost}" else "") +
-                           (if (epsData?.discountDeadline != null) "|EPS_DEADLINE:${epsData.discountDeadline}" else ""), 
+                           (if (epsData?.discountDeadline != null) "|EPS_DEADLINE:${epsData.discountDeadline}" else "") +
+                           (if (epsData?.discountThresholdAmount != null) "|EPS_THRESHOLD_AMOUNT:${epsData.discountThresholdAmount}" else "") +
+                           (if (epsData?.discountThresholdMessage != null) "|EPS_THRESHOLD_MESSAGE:${epsData.discountThresholdMessage}" else "") +
+                           (if (epsData?.isCorrection == true) "|IS_CORRECTION:true" else "") +
+                           (if (parsed.discountDeadline != null && isInfostan) "|INFOSTAN_DEADLINE:${parsed.discountDeadline}" else ""), 
                 paymentStatus = initialStatus
             )
 
@@ -347,6 +376,26 @@ class SyncReceiptsUseCase @Inject constructor(
             val deterministicId = com.platisa.app.core.domain.util.DeterministicIdGenerator.generate(baseReceipt)
             android.util.Log.d("SyncReceiptsUseCase", "🔐 Swapping Gmail ID ($externalId) -> Deterministic ID ($deterministicId)")
             
+            // SECONDARY CHECK: Does this DETERMINISTIC ID already exist?
+            // (e.g. Scanned via camera but now found in Gmail)
+            val existingDeterministic = repo.getReceiptByExternalId(deterministicId)
+            if (existingDeterministic != null) {
+                android.util.Log.d("SyncReceiptsUseCase", "🔍 Found existing deterministic match: ID=${existingDeterministic.id}, Status=${existingDeterministic.paymentStatus}")
+                
+                // Update PAID status if needed
+                if (paidIds.contains(deterministicId) && existingDeterministic.paymentStatus != com.platisa.app.core.domain.model.PaymentStatus.PAID) {
+                    android.util.Log.d("SyncReceiptsUseCase", "🔄 Updating existing deterministic receipt to PAID based on Firestore: $deterministicId")
+                    val updated = existingDeterministic.copy(
+                        paymentStatus = com.platisa.app.core.domain.model.PaymentStatus.PAID,
+                        updatedAt = Date(),
+                        metadata = (existingDeterministic.metadata ?: "") + " [Cloud Sync (Det)]"
+                    )
+                    repo.updateReceipt(updated)
+                }
+                android.util.Log.w("SyncReceiptsUseCase", "⏭️ SKIPPING: Deterministic ID already processed: $deterministicId")
+                return
+            }
+
             val finalReceipt = baseReceipt.copy(externalId = deterministicId)
             
             // Re-Check PAID status with DETERMINISTIC ID (since that's what other devices use)
@@ -356,19 +405,44 @@ class SyncReceiptsUseCase @Inject constructor(
                  finalReceipt.paymentStatus
             }
             
-            val receiptToSave = finalReceipt.copy(paymentStatus = finalStatus)
+            // SMART ANOMALY PREVENTION:
+            // Check if this new bill is suspiciously low compared to history
+            var receiptWithAnomaly = finalReceipt.copy(paymentStatus = finalStatus)
+            
+            if (!receiptWithAnomaly.isStorno) {
+                val anomaly = anomalyDetector.checkAnomaly(receiptWithAnomaly.toEntity())
+                when (anomaly) {
+                    is AnomalyResult.SuspiciouslyLow -> {
+                        android.util.Log.w("SyncReceiptsUseCase", "⚠️ ANOMALY: Bill is too low ${receiptWithAnomaly.totalAmount} (Average: ${anomaly.average})")
+                        receiptWithAnomaly = receiptWithAnomaly.copy(
+                            anomalyType = "LOW_AVG",
+                            anomalyMessage = "Iznos je ${String.format("%.0f", anomaly.percentOfAverage)}% proseka (${anomaly.average} RSD). Da li je ovo greška?"
+                        )
+                    }
+                    is AnomalyResult.SuddenDrop -> {
+                        android.util.Log.w("SyncReceiptsUseCase", "⚠️ ANOMALY: Sudden drop from ${anomaly.previousAmount} to ${receiptWithAnomaly.totalAmount}")
+                        receiptWithAnomaly = receiptWithAnomaly.copy(
+                            anomalyType = "DROP_SPIKE",
+                            anomalyMessage = "Veliki pad (-${String.format("%.0f", anomaly.dropPercent)}%) u odnosu na prošli mesec (${anomaly.previousAmount} RSD)."
+                        )
+                    }
+                    else -> {} // No anomaly
+                }
+            }
+            
+            val receiptToSave = receiptWithAnomaly
 
             
             try {
-                // Pass billingPeriod string explicitly for safe duplicate check
-                val id = repo.insertReceipt(receiptToSave, epsData?.billingPeriod)
+                // ATOMIC INSERT: Receipt + EPS Data in one transaction to prevent FK constraint errors
+                val id = repo.insertReceiptWithData(
+                    receipt = receiptToSave,
+                    epsData = epsData,
+                    billingPeriod = epsData?.billingPeriod
+                )
                 android.util.Log.d("SyncReceiptsUseCase", "✅ Receipt saved with ID: $id")
                 android.util.Log.d("SyncReceiptsUseCase", "💰 FINAL AMOUNT: ${receiptToSave.totalAmount} | Merchant: ${receiptToSave.merchantName} | Date: ${receiptToSave.date}")
                 
-                // Only insert EPS data if it's not null
-                if (epsData != null) {
-                    repo.insertEpsData(epsData, id)
-                }
                 parsedCount.incrementAndGet()
             } catch (e: DuplicateBillException) {
                 android.util.Log.w("SyncReceiptsUseCase", "🛑 DUPLICATE BLOCKED: ${e.message}")

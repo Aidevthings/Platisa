@@ -20,6 +20,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -34,6 +35,8 @@ import com.platisa.app.core.domain.model.DiscountRow
 @Composable
 fun DiscountPopup(
     discountTable: List<DiscountRow>? = null,
+    infostanDeadline: String? = null,
+    epsDiscountThreshold: String? = null,
     onDismiss: () -> Unit,
     onRemind: () -> Unit
 ) {
@@ -41,7 +44,7 @@ fun DiscountPopup(
     val isDarkTheme = customColors.background == VoidBackground
     
     // Log for debugging
-    android.util.Log.d("BillDetails", "🎨 DiscountPopup rendering, isDarkTheme=$isDarkTheme, rows=${discountTable?.size ?: 0}")
+    android.util.Log.d("BillDetails", "🎨 DiscountPopup rendering, isDarkTheme=$isDarkTheme, rows=${discountTable?.size ?: 0}, infostanDeadline=$infostanDeadline")
     
     Dialog(
         onDismissRequest = onDismiss,
@@ -51,25 +54,25 @@ fun DiscountPopup(
             usePlatformDefaultWidth = false
         )
     ) {
-        // Apply Strict Scale Rules (Force 1.0x Font Scale for this specific popup)
-        val currentDensity = androidx.compose.ui.platform.LocalDensity.current
-        val strictDensity = androidx.compose.ui.unit.Density(
-            density = currentDensity.density,
-            fontScale = 1.0f // Force standard font size to prevent layout breakage
-        )
-
-        CompositionLocalProvider(
-            androidx.compose.ui.platform.LocalDensity provides strictDensity
-        ) {
-            // Apply Dynamic Text Rules (Max Font Scale 1.3x - effectively ignored due to local overwrite, which is what we want)
-            PlatisaTheme(darkTheme = isDarkTheme) {
-                // Surface required to apply theme background/content colors correctly if strictly needed,
-                // but here we just need the CompositionLocals (Density/Typography).
-                if (isDarkTheme) {
-                    DarkThemePopupContent(discountTable = discountTable, onDismiss = onDismiss, onRemind = onRemind)
-                } else {
-                    LightThemePopupContent(discountTable = discountTable, onDismiss = onDismiss, onRemind = onRemind)
-                }
+        PlatisaTheme(darkTheme = isDarkTheme) {
+            // Surface required to apply theme background/content colors correctly if strictly needed,
+            // but here we just need the CompositionLocals (Density/Typography).
+            if (isDarkTheme) {
+                DarkThemePopupContent(
+                    discountTable = discountTable, 
+                    infostanDeadline = infostanDeadline, 
+                    epsDiscountThreshold = epsDiscountThreshold,
+                    onDismiss = onDismiss, 
+                    onRemind = onRemind
+                )
+            } else {
+                LightThemePopupContent(
+                    discountTable = discountTable, 
+                    infostanDeadline = infostanDeadline, 
+                    epsDiscountThreshold = epsDiscountThreshold,
+                    onDismiss = onDismiss, 
+                    onRemind = onRemind
+                )
             }
         }
     }
@@ -79,7 +82,14 @@ fun DiscountPopup(
  * Dark theme version - Electric neon blue glow effects
  */
 @Composable
-private fun DarkThemePopupContent(discountTable: List<DiscountRow>?, onDismiss: () -> Unit, onRemind: () -> Unit) {
+private fun DarkThemePopupContent(
+    discountTable: List<DiscountRow>?, 
+    infostanDeadline: String?, 
+    epsDiscountThreshold: String?,
+    onDismiss: () -> Unit, 
+    onRemind: () -> Unit
+) {
+    val customColors = LocalPlatisaColors.current
     // Animated glow pulse effect
     val infiniteTransition = rememberInfiniteTransition(label = "glowPulse")
     val glowAlpha by infiniteTransition.animateFloat(
@@ -179,14 +189,36 @@ private fun DarkThemePopupContent(discountTable: List<DiscountRow>?, onDismiss: 
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(20.dp),
+                            .padding(24.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         Spacer(modifier = Modifier.height(24.dp))
                         
-                        // Discount grid with actual data
-                        DiscountGridDark(discountTable = discountTable, glowAlpha = glowAlpha)
+                        // Discount grid with actual data OR Infostan message
+                        if (infostanDeadline != null) {
+                            InfostanMessageDark(infostanDeadline = infostanDeadline, glowAlpha = glowAlpha)
+                        } else {
+                            if (epsDiscountThreshold != null) {
+                                val message = if (epsDiscountThreshold.contains("Uplatom", ignoreCase = true) || 
+                                                 epsDiscountThreshold.contains("Уплатом", ignoreCase = true)) {
+                                    epsDiscountThreshold
+                                } else {
+                                    "Popust važi samo uz uplatu celokupnog duga od $epsDiscountThreshold RSD"
+                                }
+                                
+                                Text(
+                                    text = message,
+                                    color = Color.White.copy(alpha = 0.9f),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.padding(horizontal = 8.dp)
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                            }
+                            DiscountGridDark(discountTable = discountTable, glowAlpha = glowAlpha)
+                        }
                         
                         Spacer(modifier = Modifier.height(16.dp))
                         
@@ -215,7 +247,13 @@ private fun DarkThemePopupContent(discountTable: List<DiscountRow>?, onDismiss: 
  * Light theme version - Soft shadows and muted colors
  */
 @Composable
-private fun LightThemePopupContent(discountTable: List<DiscountRow>?, onDismiss: () -> Unit, onRemind: () -> Unit) {
+private fun LightThemePopupContent(
+    discountTable: List<DiscountRow>?, 
+    infostanDeadline: String?, 
+    epsDiscountThreshold: String?,
+    onDismiss: () -> Unit, 
+    onRemind: () -> Unit
+) {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -269,14 +307,36 @@ private fun LightThemePopupContent(discountTable: List<DiscountRow>?, onDismiss:
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(20.dp),
+                        .padding(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     Spacer(modifier = Modifier.height(24.dp))
                     
-                    // Discount Grid for Light Theme
-                    DiscountGridLight(discountTable = discountTable)
+                    // Discount Grid or Infostan Message for Light Theme
+                    if (infostanDeadline != null) {
+                        InfostanMessageLight(infostanDeadline = infostanDeadline)
+                    } else {
+                        if (epsDiscountThreshold != null) {
+                            val message = if (epsDiscountThreshold.contains("Uplatom", ignoreCase = true) || 
+                                             epsDiscountThreshold.contains("Уплатом", ignoreCase = true)) {
+                                epsDiscountThreshold
+                            } else {
+                                "Popust važi samo uz uplatu celokupnog duga od $epsDiscountThreshold RSD"
+                            }
+                            
+                            Text(
+                                text = message,
+                                color = SolarTextPrimary,
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(horizontal = 8.dp)
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+                        DiscountGridLight(discountTable = discountTable)
+                    }
                     
                     Spacer(modifier = Modifier.height(16.dp))
                     
@@ -303,6 +363,7 @@ private fun LightThemePopupContent(discountTable: List<DiscountRow>?, onDismiss:
  */
 @Composable
 private fun DiscountGridDark(discountTable: List<DiscountRow>?, glowAlpha: Float) {
+    val rows = discountTable ?: emptyList()
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -327,13 +388,12 @@ private fun DiscountGridDark(discountTable: List<DiscountRow>?, glowAlpha: Float
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            DiscountCellDark(text = "Popust", isHeader = true, glowAlpha = glowAlpha, modifier = Modifier.weight(0.2f), style = MaterialTheme.typography.bodySmall)
-            DiscountCellDark(text = "Važi do", isHeader = true, glowAlpha = glowAlpha, modifier = Modifier.weight(0.4f)) // Defaults to bodyMedium
-            DiscountCellDark(text = "Iznos", isHeader = true, glowAlpha = glowAlpha, modifier = Modifier.weight(0.4f))
+            DiscountCellDark(text = "Popust", isHeader = true, glowAlpha = glowAlpha, modifier = Modifier.weight(0.20f))
+            DiscountCellDark(text = "Uslov", isHeader = true, glowAlpha = glowAlpha, modifier = Modifier.weight(0.53f))
+            DiscountCellDark(text = "Iznos", isHeader = true, glowAlpha = glowAlpha, modifier = Modifier.weight(0.27f))
         }
         
         // Data rows
-        val rows = discountTable ?: emptyList()
         if (rows.isEmpty()) {
             Text(
                 text = "Nema podataka o popustima",
@@ -347,9 +407,9 @@ private fun DiscountGridDark(discountTable: List<DiscountRow>?, glowAlpha: Float
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    DiscountCellDark(text = row.percentage, isHeader = false, glowAlpha = glowAlpha, modifier = Modifier.weight(0.2f), style = MaterialTheme.typography.bodySmall)
-                    DiscountCellDark(text = row.deadline, isHeader = false, glowAlpha = glowAlpha, modifier = Modifier.weight(0.4f))
-                    DiscountCellDark(text = row.amount, isHeader = false, glowAlpha = glowAlpha, modifier = Modifier.weight(0.4f))
+                    DiscountCellDark(text = row.percentage, isHeader = false, glowAlpha = glowAlpha, modifier = Modifier.weight(0.20f))
+                    DiscountCellDark(text = row.deadline, isHeader = false, glowAlpha = glowAlpha, modifier = Modifier.weight(0.53f), isUslov = true)
+                    DiscountCellDark(text = row.amount, isHeader = false, glowAlpha = glowAlpha, modifier = Modifier.weight(0.27f))
                 }
             }
         }
@@ -357,7 +417,52 @@ private fun DiscountGridDark(discountTable: List<DiscountRow>?, glowAlpha: Float
 }
 
 @Composable
-private fun DiscountCellDark(text: String, isHeader: Boolean, glowAlpha: Float, modifier: Modifier = Modifier, style: androidx.compose.ui.text.TextStyle = MaterialTheme.typography.bodyMedium) {
+private fun InfostanMessageDark(infostanDeadline: String, glowAlpha: Float) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(CardSurface)
+            .border(
+                width = 2.dp,
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        CyberCyan.copy(alpha = glowAlpha * 0.6f),
+                        NeonPurple.copy(alpha = glowAlpha * 0.4f),
+                        CyberCyan.copy(alpha = glowAlpha * 0.6f)
+                    )
+                ),
+                shape = RoundedCornerShape(16.dp)
+            )
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text(
+            text = "Ovaj račun ima popust ako ga platite do:",
+            color = Color.White.copy(alpha = 0.9f),
+            style = MaterialTheme.typography.bodyLarge,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
+        
+        Text(
+            text = infostanDeadline,
+            color = CyberCyan,
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
+    }
+}
+
+@Composable
+private fun DiscountCellDark(
+    text: String, 
+    isHeader: Boolean, 
+    glowAlpha: Float, 
+    modifier: Modifier = Modifier,
+    isUslov: Boolean = false
+) {
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(8.dp))
@@ -370,18 +475,25 @@ private fun DiscountCellDark(text: String, isHeader: Boolean, glowAlpha: Float, 
                 color = CyberCyan.copy(alpha = glowAlpha * 0.4f),
                 shape = RoundedCornerShape(8.dp)
             )
-            .padding(8.dp),
+            .padding(vertical = 8.dp, horizontal = 4.dp), // Less horizontal padding
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = text,
-            color = if (isHeader) CyberCyan else Color.White,
-            style = style,
-            fontWeight = if (isHeader) FontWeight.Bold else FontWeight.Normal,
-
-            maxLines = 1,
-            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-        )
+        if (isUslov) {
+            SplitConditionText(
+                text = text,
+                color = if (isHeader) CyberCyan else Color.White,
+                isHeader = isHeader
+            )
+        } else {
+            com.platisa.app.ui.components.DynamicSizeText(
+                text = text,
+                color = if (isHeader) CyberCyan else Color.White,
+                fontWeight = if (isHeader) FontWeight.Bold else FontWeight.Normal,
+                minFontSize = 10.sp,
+                maxFontSize = if (isHeader) 14.sp else 13.sp,
+                textAlign = TextAlign.Center
+            )
+        }
     }
 }
 
@@ -390,6 +502,7 @@ private fun DiscountCellDark(text: String, isHeader: Boolean, glowAlpha: Float, 
  */
 @Composable
 private fun DiscountGridLight(discountTable: List<DiscountRow>?) {
+    val rows = discountTable ?: emptyList()
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -408,13 +521,12 @@ private fun DiscountGridLight(discountTable: List<DiscountRow>?) {
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            DiscountCellLight(text = "Popust", isHeader = true, modifier = Modifier.weight(0.2f), style = MaterialTheme.typography.bodySmall)
-            DiscountCellLight(text = "Važi do", isHeader = true, modifier = Modifier.weight(0.4f)) // Defaults to bodyMedium
-            DiscountCellLight(text = "Iznos", isHeader = true, modifier = Modifier.weight(0.4f))
+            DiscountCellLight(text = "Popust", isHeader = true, modifier = Modifier.weight(0.20f))
+            DiscountCellLight(text = "Uslov", isHeader = true, modifier = Modifier.weight(0.53f))
+            DiscountCellLight(text = "Iznos", isHeader = true, modifier = Modifier.weight(0.27f))
         }
         
         // Data rows
-        val rows = discountTable ?: emptyList()
         if (rows.isEmpty()) {
             Text(
                 text = "Nema podataka o popustima",
@@ -428,9 +540,9 @@ private fun DiscountGridLight(discountTable: List<DiscountRow>?) {
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    DiscountCellLight(text = row.percentage, isHeader = false, modifier = Modifier.weight(0.2f), style = MaterialTheme.typography.bodySmall)
-                    DiscountCellLight(text = row.deadline, isHeader = false, modifier = Modifier.weight(0.4f))
-                    DiscountCellLight(text = row.amount, isHeader = false, modifier = Modifier.weight(0.4f))
+                    DiscountCellLight(text = row.percentage, isHeader = false, modifier = Modifier.weight(0.20f))
+                    DiscountCellLight(text = row.deadline, isHeader = false, modifier = Modifier.weight(0.53f), isUslov = true)
+                    DiscountCellLight(text = row.amount, isHeader = false, modifier = Modifier.weight(0.27f))
                 }
             }
         }
@@ -438,7 +550,45 @@ private fun DiscountGridLight(discountTable: List<DiscountRow>?) {
 }
 
 @Composable
-private fun DiscountCellLight(text: String, isHeader: Boolean, modifier: Modifier = Modifier, style: androidx.compose.ui.text.TextStyle = MaterialTheme.typography.bodyMedium) {
+private fun InfostanMessageLight(infostanDeadline: String) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(SolarSurfaceVariant)
+            .border(
+                width = 2.dp,
+                color = DeepTeal.copy(alpha = 0.3f),
+                shape = RoundedCornerShape(16.dp)
+            )
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text(
+            text = "Ovaj račun ima popust ako ga platite do:",
+            color = SolarTextPrimary,
+            style = MaterialTheme.typography.bodyLarge,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
+        
+        Text(
+            text = infostanDeadline,
+            color = DeepTeal,
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
+    }
+}
+
+@Composable
+private fun DiscountCellLight(
+    text: String, 
+    isHeader: Boolean, 
+    modifier: Modifier = Modifier,
+    isUslov: Boolean = false
+) {
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(8.dp))
@@ -451,17 +601,89 @@ private fun DiscountCellLight(text: String, isHeader: Boolean, modifier: Modifie
                 color = DeepTeal.copy(alpha = 0.3f),
                 shape = RoundedCornerShape(8.dp)
             )
-            .padding(8.dp),
+            .padding(vertical = 8.dp, horizontal = 4.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = text,
-            color = if (isHeader) DeepTeal else SolarTextPrimary,
-            style = style,
-            fontWeight = if (isHeader) FontWeight.Bold else FontWeight.Normal,
+        if (isUslov) {
+            SplitConditionText(
+                text = text,
+                color = if (isHeader) DeepTeal else SolarTextPrimary,
+                isHeader = isHeader
+            )
+        } else {
+            com.platisa.app.ui.components.DynamicSizeText(
+                text = text,
+                color = if (isHeader) DeepTeal else SolarTextPrimary,
+                fontWeight = if (isHeader) FontWeight.Bold else FontWeight.Normal,
+                minFontSize = 10.sp,
+                maxFontSize = if (isHeader) 14.sp else 13.sp,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
 
-            maxLines = 1,
-            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+/**
+ * Splits text into two lines: Date and secondary text.
+ */
+@Composable
+private fun SplitConditionText(
+    text: String,
+    color: Color,
+    isHeader: Boolean
+) {
+    if (isHeader) {
+        com.platisa.app.ui.components.DynamicSizeText(
+            text = text,
+            color = color,
+            fontWeight = FontWeight.Bold,
+            minFontSize = 10.sp,
+            maxFontSize = 14.sp,
+            textAlign = TextAlign.Center
+        )
+        return
+    }
+
+    // Attempt to split by date pattern (e.g., 28.01.2026.)
+    val dateRegex = Regex("(\\d{1,2}\\.\\d{1,2}\\.\\d{4}\\.?)")
+    val match = dateRegex.find(text)
+    
+    if (match != null) {
+        val datePart = match.value
+        val restPart = text.replace(datePart, "").trim()
+        
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            com.platisa.app.ui.components.DynamicSizeText(
+                text = datePart,
+                color = color,
+                fontWeight = FontWeight.Normal,
+                minFontSize = 11.sp,
+                maxFontSize = 13.sp,
+                textAlign = TextAlign.Center
+            )
+            if (restPart.isNotEmpty()) {
+                com.platisa.app.ui.components.DynamicSizeText(
+                    text = restPart,
+                    color = color.copy(alpha = 0.8f),
+                    fontWeight = FontWeight.Normal,
+                    minFontSize = 9.sp,
+                    maxFontSize = 11.sp,
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+    } else {
+        // Fallback
+        com.platisa.app.ui.components.DynamicSizeText(
+            text = text,
+            color = color,
+            fontWeight = FontWeight.Normal,
+            minFontSize = 10.sp,
+            maxFontSize = 13.sp,
+            textAlign = TextAlign.Center
         )
     }
 }

@@ -4,16 +4,16 @@ import retrofit2.http.GET
 import retrofit2.http.Query
 
 interface CurrencyApi {
-    @GET("latest")
+    @retrofit2.http.GET("latest/{base}")
     suspend fun getLatestRate(
-        @Query("from") from: String = "EUR",
-        @Query("to") to: String = "RSD"
+        @retrofit2.http.Path("base") base: String = "EUR"
     ): CurrencyResponse
 }
 
 data class CurrencyResponse(
-    val amount: Double,
+    @com.google.gson.annotations.SerializedName("base_code")
     val base: String,
+    @com.google.gson.annotations.SerializedName("time_last_update_utc")
     val date: String,
     val rates: Map<String, Double>
 )

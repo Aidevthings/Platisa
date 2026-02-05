@@ -139,7 +139,7 @@ fun GaugePanel(
                 modifier = Modifier
                     .fillMaxSize()
                     .alpha(0.9f), // Almost fully opaque for the dancing man
-                contentScale = androidx.compose.ui.layout.ContentScale.Fit // Fit ensures the entire animation is visible
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop // Crop ensures the animation fills the entire container
             )
         } else {
             // Currency Indicators
@@ -149,7 +149,7 @@ fun GaugePanel(
                 isActive = currency == "RSD",
                 modifier = Modifier
                     .align(Alignment.TopStart)
-                    .padding(start = 12.dp, top = 12.dp)
+                    .padding(start = 4.dp, top = 12.dp)
             )
 
             // Right: EUR

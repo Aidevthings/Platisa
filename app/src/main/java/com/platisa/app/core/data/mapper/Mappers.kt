@@ -38,7 +38,10 @@ fun ReceiptEntity.toDomain(): Receipt {
         currentMonthAmount = currentMonthAmount,
         previousDebtAmount = previousDebtAmount,
         payerName = payerName,
-        payerAddress = payerAddress
+        payerAddress = payerAddress,
+        isAnomalyConfirmed = isAnomalyConfirmed,
+        anomalyType = anomalyType,
+        anomalyMessage = anomalyMessage
     )
 }
 
@@ -89,7 +92,10 @@ fun Receipt.toEntity(): ReceiptEntity {
         recipientName = recipientName,
         recipientAddress = recipientAddress,
         payerName = payerName,
-        payerAddress = payerAddress
+        payerAddress = payerAddress,
+        isAnomalyConfirmed = isAnomalyConfirmed,
+        anomalyType = anomalyType,
+        anomalyMessage = anomalyMessage
     )
 }
 

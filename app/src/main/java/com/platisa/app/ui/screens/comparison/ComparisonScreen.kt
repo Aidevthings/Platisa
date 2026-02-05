@@ -66,6 +66,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material.icons.filled.QrCodeScanner
 import java.text.SimpleDateFormat
 import java.util.Locale
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
+import com.platisa.app.core.common.SnackbarManager
 
 // Define Chill Green
 private val ChillGreen = Color(0xFF4CAF50)
@@ -91,6 +94,97 @@ fun ComparisonScreen(
     
     val dateFormat = SimpleDateFormat("dd.MM.yyyy", Locale("sr", "RS"))
     val localFocusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
+    var isScanning by remember { mutableStateOf(false) }
+
+    // Google Scanner function
+    val launchGoogleScanner: () -> Unit = {
+        if (!isScanning) {
+            isScanning = true
+            scope.launch {
+                try {
+                    val options = com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions.Builder()
+                        .setBarcodeFormats(
+                            com.google.mlkit.vision.barcode.common.Barcode.FORMAT_QR_CODE,
+                            com.google.mlkit.vision.barcode.common.Barcode.FORMAT_PDF417,
+                            com.google.mlkit.vision.barcode.common.Barcode.FORMAT_DATA_MATRIX
+                        )
+                        .enableAutoZoom()
+                        .build()
+                    
+                    val scanner = com.google.mlkit.vision.codescanner.GmsBarcodeScanning.getClient(context, options)
+                    
+                    scanner.startScan()
+                        .addOnSuccessListener { barcode ->
+                            val rawValue = barcode.rawValue ?: run {
+                                isScanning = false
+                                return@addOnSuccessListener
+                            }
+                            
+                            // Check if IPS payment QR
+                            val ipsData = com.platisa.app.core.data.parser.IpsParser.parse(rawValue)
+                            if (ipsData != null) {
+                                scope.launch {
+                                    try {
+                                        SnackbarManager.showMessage("IPS račun prepoznat! Čuvam...")
+                                        viewModel.saveIpsBill(ipsData)
+                                        SnackbarManager.showMessage("Račun sačuvan!")
+                                        navController.navigate(com.platisa.app.ui.navigation.Screen.Home.route)
+                                    } catch (e: Exception) {
+                                        SnackbarManager.showMessage("Greška: ${e.message}")
+                                    }
+                                }
+                                isScanning = false
+                                return@addOnSuccessListener
+                            }
+                            
+                            // Check if fiscal receipt URL
+                            if (com.platisa.app.core.common.FiscalScraper.isFiscalUrl(rawValue)) {
+                                scope.launch {
+                                    try {
+                                        SnackbarManager.showMessage("Fiskalni račun prepoznat! Učitavam...")
+                                        val receiptId = viewModel.saveFiscalReceipt(rawValue)
+                                        if (receiptId != null) {
+                                            SnackbarManager.showMessage("Račun sačuvan!")
+                                            navController.navigate(com.platisa.app.ui.navigation.Screen.FiscalReceiptDetails.createRoute(receiptId))
+                                        } else {
+                                            val fallbackId = viewModel.saveFiscalReceiptFallback(rawValue)
+                                            if (fallbackId != null) {
+                                                SnackbarManager.showMessage("Link sačuvan!")
+                                                navController.navigate(com.platisa.app.ui.navigation.Screen.FiscalReceiptDetails.createRoute(fallbackId))
+                                            } else {
+                                                SnackbarManager.showMessage("Greška pri čuvanju")
+                                            }
+                                        }
+                                    } catch (e: Exception) {
+                                        SnackbarManager.showMessage("Greška: ${e.message}")
+                                    }
+                                }
+                            } else {
+                                // Unknown QR code
+                                scope.launch {
+                                    SnackbarManager.showMessage("Nepoznat QR kod")
+                                }
+                            }
+                            isScanning = false
+                        }
+                        .addOnFailureListener { e ->
+                            scope.launch {
+                                SnackbarManager.showMessage("Skeniranje nije uspelo: ${e.localizedMessage ?: "Greška"}")
+                            }
+                            isScanning = false
+                        }
+                        .addOnCanceledListener {
+                            isScanning = false
+                        }
+                } catch (e: Exception) {
+                    SnackbarManager.showMessage("Greška: ${e.message}")
+                    isScanning = false
+                }
+            }
+        }
+    }
 
     Box(
         modifier = Modifier.fillMaxSize()
@@ -165,7 +259,7 @@ fun ComparisonScreen(
                 .border(1.dp, mainAccentColor, RoundedCornerShape(16.dp))
                 .clickable { 
                     viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
-                    navController.navigate(com.platisa.app.ui.navigation.Screen.Camera.route) 
+                    launchGoogleScanner()
                 },
             contentAlignment = Alignment.Center
         ) {

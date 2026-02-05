@@ -126,7 +126,7 @@ class SecureStorageImpl @Inject constructor(
     }
     
     override fun getCelebrationImagePath(): String? {
-        return sharedPreferences.getString("celebration_image_path", "predefined:celebration_4") ?: "predefined:celebration_4"
+        return sharedPreferences.getString("celebration_image_path", "predefined:celebration_bosiljka") ?: "predefined:celebration_bosiljka"
     }
     
     override fun setCelebrationImagePath(path: String?) {

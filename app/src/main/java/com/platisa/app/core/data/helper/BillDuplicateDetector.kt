@@ -64,6 +64,14 @@ class BillDuplicateDetector @Inject constructor(
                 val isSameMerchant = normalizeMerchant(existing.merchantName) == normalizeMerchant(receipt.merchantName)
                 
                 if (isSameMerchant) {
+                    // NEW SAFE CHECK: Even if it's same merchant, if we have Naplatni Number, they MUST match.
+                    // This prevents collisions if user has two EPS accounts with same amount.
+                    val bothHaveNaplatni = !receipt.naplatniNumber.isNullOrEmpty() && !existing.naplatniNumber.isNullOrEmpty()
+                    if (bothHaveNaplatni && receipt.naplatniNumber != existing.naplatniNumber) {
+                        android.util.Log.d("BillDuplicateDetector", "✓ Nije duplikat: Isti period+iznos+trgovac, ali RAZLIČIT naplatni broj (${receipt.naplatniNumber} vs ${existing.naplatniNumber})")
+                        continue
+                    }
+
                     android.util.Log.w("BillDuplicateDetector", "🚨 DUPLIKAT (SAFE): Period + Amount + Isti Trgovac")
                     val result = evaluateDuplicates(
                         receipt, 
@@ -197,6 +205,49 @@ class BillDuplicateDetector @Inject constructor(
             )
         }
         
+        // SCENARIO 2.5: Zamena STORNO računa REGULARNIM (Uvek dozvoljeno)
+        // Ako već imamo STORNO, a stiže nam REGULARAN -> To je verovatno ispravka.
+        // Bez obzira na "score", regularan račun uvek pobeđuje storno.
+        val existingStorno = existingReceipts.find { it.isStorno }
+        if (!newReceipt.isStorno && existingStorno != null) {
+            android.util.Log.w("BillDuplicateDetector", "♻️ STORNO-FIX: Zamenjujem postojeći STORNO id=${existingStorno.id} sa novim REGULARNIM.")
+            return DuplicateCheckResult.ReplaceExisting(
+                existingReceipt = existingStorno,
+                message = "Automatska zamena STORNO računa sa ispravnim."
+            )
+        }
+        
+        // SCENARIO 2.6: EPS CORRECTION / REPLACEMENT
+        // If it's EPS, we handle replacements more liberally if the invoice number changes.
+        val isEps = newReceipt.merchantName.lowercase().contains("eps") || matchedBy.contains("PaymentId")
+        if (isEps) {
+            // Check for different amount
+            val differentAmountDuplicate = existingReceipts.find { 
+                Math.abs(it.totalAmount.toDouble() - newReceipt.totalAmount.toDouble()) > 1.0 
+            }
+            
+            // NEW: Check for different invoice number (The "Tie-Breaker" for corrections with same amount)
+            val differentInvoiceDuplicate = existingReceipts.find { 
+                !it.invoiceNumber.isNullOrEmpty() && 
+                !newReceipt.invoiceNumber.isNullOrEmpty() && 
+                it.invoiceNumber != newReceipt.invoiceNumber
+            }
+
+            if (differentAmountDuplicate != null) {
+                android.util.Log.w("BillDuplicateDetector", "♻️ EPS-CORRECTION: New amount (${newReceipt.totalAmount}) differs from old. Replacing.")
+                return DuplicateCheckResult.ReplaceExisting(
+                    existingReceipt = differentAmountDuplicate,
+                    message = "Novi iznos za isti nalog/period (Korekcija)."
+                )
+            } else if (differentInvoiceDuplicate != null) {
+                android.util.Log.w("BillDuplicateDetector", "♻️ EPS-REPLACEMENT: Same amount but different Invoice Number (${newReceipt.invoiceNumber}). Replacing.")
+                return DuplicateCheckResult.ReplaceExisting(
+                    existingReceipt = differentInvoiceDuplicate,
+                    message = "Novi broj računa za isti nalog/period (Zamena)."
+                )
+            }
+        }
+
         // SCENARIO 3: Kvalitativno poređenje (Survival of the Fittest)
         // Ako novi račun ima bolji ili jednak skor od postojećeg, dozvoljavamo zamenu.
         // Npr. ako smo imali STORNO, a sad imamo Regularni -> Zameni.
@@ -260,6 +311,12 @@ class BillDuplicateDetector @Inject constructor(
         
         // 5. Payment ID (Kompletiran EPS podatak)
         if (!receipt.paymentId.isNullOrBlank()) score += 10
+        
+        // 6. Correction Flag (Metadata)
+        if (receipt.metadata?.contains("IS_CORRECTION:true") == true) {
+            score += 50
+            android.util.Log.d("BillDuplicateDetector", "🚀 Score BOOST for Correction (+50)")
+        }
         
         return score
     }

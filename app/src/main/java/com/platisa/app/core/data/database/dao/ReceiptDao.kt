@@ -142,5 +142,9 @@ interface ReceiptDao {
     // Cascade Validation: Get SUM of unpaid bills OLDER than this one
     @Query("SELECT SUM(totalAmount) FROM receipts WHERE TRIM(merchantName) = TRIM(:merchantName) COLLATE NOCASE AND paymentStatus = 'UNPAID' AND date < :beforeDate")
     suspend fun getUnpaidPastBillsSum(merchantName: String, beforeDate: Long): Double?
+
+    // Anomaly Detection History
+    @Query("SELECT * FROM receipts WHERE TRIM(merchantName) = TRIM(:merchantName) COLLATE NOCASE ORDER BY date DESC LIMIT :limit")
+    suspend fun getLastReceiptsForMerchant(merchantName: String, limit: Int): List<ReceiptEntity>
 }
 

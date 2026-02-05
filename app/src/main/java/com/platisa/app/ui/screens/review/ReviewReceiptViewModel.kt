@@ -299,57 +299,74 @@ class ReviewReceiptViewModel @Inject constructor(
             val parsed = _parsedReceipt.value
             val eps = _epsData.value
 
+            // 3. Prepare full EPS Metadata
+            val epsMetadata = StringBuilder()
+            if (eps?.electricityBaseCost != null) {
+                epsMetadata.append("|EPS_BASE_COST:${eps.electricityBaseCost}")
+            }
+            if (eps?.discountDeadline != null) {
+                epsMetadata.append("|EPS_DEADLINE:${eps.discountDeadline}")
+            }
+            if (eps?.discountThresholdAmount != null) {
+                epsMetadata.append("|EPS_THRESHOLD_AMOUNT:${eps.discountThresholdAmount}")
+            }
+            if (eps?.discountThresholdMessage != null) {
+                epsMetadata.append("|EPS_THRESHOLD_MESSAGE:${eps.discountThresholdMessage}")
+            }
+            val metadataWithDiscount = if (epsMetadata.isNotEmpty()) epsMetadata.toString() else null
+
             if (existingReceiptId != 0L) {
                 // Update existing receipt
                 val existingReceipt = repository.getReceiptById(existingReceiptId)
                 existingReceipt?.let {
+                    // Robust Metadata Merge: Remove old EPS tags (handling start of string too)
+                    var baseMetadata = it.metadata ?: ""
+                    listOf("EPS_BASE_COST", "EPS_DEADLINE", "EPS_THRESHOLD_AMOUNT", "EPS_THRESHOLD_MESSAGE").forEach { tag ->
+                        // Match |TAG:value or ^TAG:value (if it's the first tag)
+                        baseMetadata = baseMetadata.replace(Regex("(?:\\||^)$tag:[^|]*"), "")
+                    }
+                    
+                    // Construct final string: Clean up double pipes and leading/trailing pipes
+                    val rawMerge = (baseMetadata.trim('|') + "|" + (metadataWithDiscount ?: "").trim('|'))
+                    val finalMetadata = rawMerge.split("|")
+                        .filter { it.isNotBlank() }
+                        .joinToString("|")
+                    
                     val updatedReceipt = it.copy(
                         merchantName = merchant,
                         totalAmount = amount,
                         date = date,
                         dueDate = parsed?.dueDate ?: it.dueDate,
                         qrCodeData = parsed?.qrCodeData,
-                        // Update recipient/payer info
-                        // CRITICAL FIX: Prefer 'parsed' (ReceiptParser) over 'eps' (EpsParser) for Address/Name
-                        // EpsParser often grabs generic "Opstina" lines incorrectly for Infostan.
+                        invoiceNumber = invoiceNumber,
                         recipientName = parsed?.recipientName ?: eps?.recipientName ?: it.recipientName,
                         recipientAddress = parsed?.recipientAddress ?: eps?.recipientAddress ?: it.recipientAddress,
                         payerName = parsed?.payerName ?: it.payerName,
-                        payerAddress = parsed?.payerAddress ?: it.payerAddress
+                        payerAddress = parsed?.payerAddress ?: it.payerAddress,
+                        metadata = finalMetadata
                     )
                     repository.updateReceipt(updatedReceipt)
                 }
             } else {
                 // Insert new receipt
-                    // Serialize discount table to JSON for metadata storage
-                    // Serialize EPS base cost and deadline for lazy discount calculation on latest bill
-                    val epsMetadata = StringBuilder()
-                    if (eps?.electricityBaseCost != null) {
-                        epsMetadata.append("|EPS_BASE_COST:${eps.electricityBaseCost}")
-                    }
-                    if (eps?.discountDeadline != null) {
-                        epsMetadata.append("|EPS_DEADLINE:${eps.discountDeadline}")
-                    }
-                    val metadataWithDiscount = if (epsMetadata.isNotEmpty()) epsMetadata.toString() else null
-                    
-                    val receipt = Receipt(
-                        id = 0,
-                        merchantName = merchant,
-                        totalAmount = amount,
-                        date = date,
-                        dueDate = parsed?.dueDate, 
-                        imagePath = imageUriString,
-                        qrCodeData = parsed?.qrCodeData,
-                        invoiceNumber = invoiceNumber,
-                        savedQrUri = lastSavedQrUri,
-                        paymentStatus = if (lastSavedQrUri != null) com.platisa.app.core.domain.model.PaymentStatus.PROCESSING else com.platisa.app.core.domain.model.PaymentStatus.UNPAID,
-                        recipientName = parsed?.recipientName ?: eps?.recipientName,
-                        recipientAddress = parsed?.recipientAddress ?: eps?.recipientAddress,
-                        payerName = parsed?.payerName,
-                        payerAddress = parsed?.payerAddress,
-                        metadata = metadataWithDiscount
-                    )
-                    val receiptId = repository.insertReceipt(receipt, eps?.billingPeriod)
+                val receipt = Receipt(
+                    id = 0,
+                    merchantName = merchant,
+                    totalAmount = amount,
+                    date = date,
+                    dueDate = parsed?.dueDate, 
+                    imagePath = imageUriString,
+                    qrCodeData = parsed?.qrCodeData,
+                    invoiceNumber = invoiceNumber,
+                    savedQrUri = lastSavedQrUri,
+                    paymentStatus = if (lastSavedQrUri != null) com.platisa.app.core.domain.model.PaymentStatus.PROCESSING else com.platisa.app.core.domain.model.PaymentStatus.UNPAID,
+                    recipientName = parsed?.recipientName ?: eps?.recipientName,
+                    recipientAddress = parsed?.recipientAddress ?: eps?.recipientAddress,
+                    payerName = parsed?.payerName,
+                    payerAddress = parsed?.payerAddress,
+                    metadata = metadataWithDiscount
+                )
+                val receiptId = repository.insertReceipt(receipt, eps?.billingPeriod)
                 android.util.Log.d("ReviewVM", "✅ Receipt saved successfully! ID: $receiptId, Invoice: $invoiceNumber")
 
                 // Save EPS data for new receipts - use cached data which has Gemini's recipient info

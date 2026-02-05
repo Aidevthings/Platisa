@@ -26,9 +26,11 @@ class BillDetailsViewModel @Inject constructor(
         vibrationHelper.vibrate(type)
     }
     
-    fun scheduleDiscountReminder(deadlines: List<String>) {
+    fun scheduleDiscountReminder(receiptId: Long, deadlines: List<String>) {
         viewModelScope.launch {
             try {
+                android.util.Log.d("BillDetailsVM", "🔔 Starting scheduleDiscountReminder for Receipt ID: $receiptId. Deadlines: $deadlines")
+                
                 var scheduledCount = 0
                 // User Request: "One reminder for each date. Not three reminders for one date."
                 // Logic: Deduplicate dates. Schedule T-1 for each unique date.
@@ -38,9 +40,20 @@ class BillDetailsViewModel @Inject constructor(
                     .filter { it.isNotEmpty() }
                     .distinct()
                 
+                android.util.Log.d("BillDetailsVM", "🔔 Unique Deadlines: $uniqueDeadlines")
+                
                 val sdf = java.text.SimpleDateFormat("dd.MM.yyyy", java.util.Locale.getDefault())
 
-                for (cleanDateStr in uniqueDeadlines) {
+                for (rawDateStr in uniqueDeadlines) {
+                    // Extract date pattern d.M.yyyy or dd.MM.yyyy ignoring extra text
+                    val match = Regex("""(\d{1,2}\.\d{1,2}\.\d{4})""").find(rawDateStr)
+                    val cleanDateStr = match?.value 
+                    
+                    if (cleanDateStr == null) {
+                        android.util.Log.w("BillDetailsVM", "⚠️ COULD NOT PARSE DATE from string: '$rawDateStr'")
+                        continue
+                    }
+                    
                     val date = sdf.parse(cleanDateStr) ?: continue
 
                     // Schedule for T-1 (One day before)
@@ -53,15 +66,35 @@ class BillDetailsViewModel @Inject constructor(
                     calendar.set(java.util.Calendar.MINUTE, 0)
                     calendar.set(java.util.Calendar.SECOND, 0)
                     
-                    // Check if date is in past
-                    if (calendar.timeInMillis < System.currentTimeMillis()) {
-                        continue
+                    // Target trigger time
+                    var triggerTime = calendar.timeInMillis
+                    
+                    // Check if target trigger time is in past
+                    if (triggerTime < System.currentTimeMillis()) {
+                        // If T-1 09:00 AM is in the past, check if the actual deadline is still in the future
+                        // (We use date.time which is midnight, so we check if current time is before the deadline DAY)
+                        if (date.time + (24 * 60 * 60 * 1000) > System.currentTimeMillis()) {
+                            android.util.Log.d("BillDetailsVM", "⏱️ Target time passed but deadline future. Scheduling for Now + 2 mins.")
+                            triggerTime = System.currentTimeMillis() + (2 * 60 * 1000)
+                        } else {
+                            android.util.Log.d("BillDetailsVM", "⏭️ Skipping past deadline: ${date}")
+                            continue
+                        }
                     }
 
                     // Schedule Alarm
                     val alarmManager = context.getSystemService(android.content.Context.ALARM_SERVICE) as android.app.AlarmManager
+                    
+                    // Determine merchant name for notification
+                    val receipt = receiptRepository.getReceiptById(receiptId)
+                    val merchantForNotification = if (receipt?.merchantName?.lowercase()?.contains("infostan") == true) {
+                        "JKP Infostan"
+                    } else {
+                        "EPS"
+                    }
+
                     val intent = android.content.Intent(context, com.platisa.app.core.notification.DiscountReminderReceiver::class.java).apply {
-                        putExtra(com.platisa.app.core.notification.DiscountReminderReceiver.EXTRA_MERCHANT_NAME, "EPS") 
+                        putExtra(com.platisa.app.core.notification.DiscountReminderReceiver.EXTRA_MERCHANT_NAME, merchantForNotification) 
                         putExtra(com.platisa.app.core.notification.DiscountReminderReceiver.EXTRA_EXPIRY_DATE, cleanDateStr)
                     }
                     
@@ -74,9 +107,10 @@ class BillDetailsViewModel @Inject constructor(
 
                     alarmManager.set(
                         android.app.AlarmManager.RTC_WAKEUP, 
-                        calendar.timeInMillis, 
+                        triggerTime, 
                         pendingIntent
                     )
+                    android.util.Log.d("BillDetailsVM", "✅ Scheduled reminder for $cleanDateStr at ${java.util.Date(triggerTime)}")
                     scheduledCount++
                 }
                 
@@ -85,11 +119,35 @@ class BillDetailsViewModel @Inject constructor(
                      val message = if (scheduledCount == 1) "Podsetnik zakazan." else "$scheduledCount podsetnika zakazana."
                      com.platisa.app.core.common.SnackbarManager.showMessage(message)
                 } else {
+                     android.util.Log.w("BillDetailsVM", "⚠️ No valid future dates found. scheduledCount=0.")
                      com.platisa.app.core.common.SnackbarManager.showMessage("Nema validnih datuma u budućnosti.")
                 }
                 
+                // CRITICAL: ALWAYS PERSIST, even if scheduledCount is 0 (maybe user clicked it but date was past, we still want to suppress popup)
+                // Actually, if scheduledCount is 0 because all dates are past, we SHOULD suppress it too.
+                // But for safety, let's just make sure we save correct metadata.
+                
+                val receipt = receiptRepository.getReceiptById(receiptId)
+                if (receipt != null) {
+                     val currentMeta = receipt.metadata ?: ""
+                     android.util.Log.d("BillDetailsVM", "💾 Current Metadata before update: '$currentMeta'")
+                     
+                     if (!currentMeta.contains("[REMINDER_SET]")) {
+                         val updatedReceipt = receipt.copy(metadata = "$currentMeta [REMINDER_SET]")
+                         android.util.Log.d("BillDetailsVM", "💾 SAVING Metadata: '${updatedReceipt.metadata}'")
+                         receiptRepository.updateReceipt(updatedReceipt)
+                         
+                         // Refresh UI to hide popup permanently
+                         loadBillDetails(receiptId.toString())
+                     } else {
+                         android.util.Log.d("BillDetailsVM", "ℹ️ Metadata already contains [REMINDER_SET]. Skipping update.")
+                     }
+                } else {
+                    android.util.Log.e("BillDetailsVM", "❌ Could not find receipt with ID $receiptId to update metadata!")
+                }
+
             } catch (e: Exception) {
-                android.util.Log.e("BillDetailsVM", "Failed to schedule reminder", e)
+                android.util.Log.e("BillDetailsVM", "❌ Failed to schedule reminder", e)
                 com.platisa.app.core.common.SnackbarManager.showMessage("Greška pri zakazivanju.")
             }
         }
@@ -178,14 +236,21 @@ class BillDetailsViewModel @Inject constructor(
                     // This satisfies the requirement: "We don't scan anything else but the latest bill only"
                     val electricityBaseCost = parseBaseCostFromMetadata(receipt.metadata)
                     val discountDeadline = parseDeadlineFromMetadata(receipt.metadata)
+                    val discountThreshold = parseDiscountThresholdFromMetadata(receipt.metadata)
+                    val infostanDeadline = parseInfostanDeadlineFromMetadata(receipt.metadata)
                     
-                    val discountTable = if (isLatest && electricityBaseCost != null) {
-                        calculateDiscountTable(electricityBaseCost, discountDeadline)
+                    // Use electricity base cost (Page 2) if available, otherwise fallback to total current month (Page 1)
+                    val baseForDiscount = electricityBaseCost ?: receipt.currentMonthAmount
+                    
+                    val discountTable = if (isLatest && baseForDiscount != null) {
+                        calculateDiscountTable(baseForDiscount, receipt.date)
                     } else {
-                        // For older bills (or non-EPS), we strictly do NOT show discounts
                         null 
                     }
 
+                    val threshold = parseDiscountThresholdFromMetadata(receipt.metadata)
+                    val thresholdMessage = parseDiscountThresholdMessageFromMetadata(receipt.metadata)
+                    
                     // 3. Update UI State
                     _billDetails.value = BillDetailsState.Success(
                         receipt = receipt,
@@ -198,7 +263,9 @@ class BillDetailsViewModel @Inject constructor(
                         smartTotalDebt = smartTotalDebt,
                         paidPastBillsSum = paidPastBillsSum,
                         billDebt = billDebt,
-                        discountTable = discountTable
+                        discountTable = discountTable,
+                        infostanDeadline = if (isLatest) infostanDeadline else null,
+                        epsDiscountThreshold = if (isLatest) (thresholdMessage ?: threshold) else null
                     )
                     
                     // Load receipt items (for fiscal receipts)
@@ -395,25 +462,52 @@ class BillDetailsViewModel @Inject constructor(
         return match?.groupValues?.get(1)
     }
 
-    private fun calculateDiscountTable(baseCost: java.math.BigDecimal, deadline: String?): List<DiscountRow> {
+    private fun parseInfostanDeadlineFromMetadata(metadata: String?): String? {
+        if (metadata.isNullOrBlank()) return null
+        val match = Regex("""INFOSTAN_DEADLINE:(.+?)(?:\||$)""").find(metadata)
+        return match?.groupValues?.get(1)
+    }
+
+    private fun parseDiscountThresholdFromMetadata(metadata: String?): String? {
+        if (metadata.isNullOrBlank()) return null
+        val match = Regex("""EPS_THRESHOLD_AMOUNT:([\d.,]+)""").find(metadata)
+        return match?.groupValues?.get(1)
+    }
+
+    private fun parseDiscountThresholdMessageFromMetadata(metadata: String?): String? {
+        if (metadata.isNullOrBlank()) return null
+        val match = Regex("""EPS_THRESHOLD_MESSAGE:(.+?)(?:\||$)""").find(metadata)
+        return match?.groupValues?.get(1)
+    }
+
+    private fun calculateDiscountTable(baseCost: java.math.BigDecimal, billDate: java.util.Date): List<DiscountRow> {
         val discountRows = mutableListOf<DiscountRow>()
-        val baseDeadline = deadline ?: ""
-        val amountDouble = baseCost.toDouble()
+        val calendar = java.util.Calendar.getInstance()
+        calendar.time = billDate
+        
+        // Use the month and year from the bill date directly (matches what is shown in UI)
+        val month = String.format("%02d", calendar.get(java.util.Calendar.MONTH) + 1)
+        val year = calendar.get(java.util.Calendar.YEAR)
 
         val discountPercentages = listOf(5, 6, 7)
         for (pct in discountPercentages) {
-            val discountAmount = amountDouble * pct / 100
-            val formattedAmount = String.format("%.2f", discountAmount).replace(".", ",")
+            val discountAmount = baseCost.multiply(java.math.BigDecimal(pct)).divide(java.math.BigDecimal(100), 2, java.math.RoundingMode.HALF_UP)
+            val formattedAmount = String.format("%,.2f", discountAmount).replace(",", "X").replace(".", ",").replace("X", ".")
 
-            // User Request: "On the second column... we only want date to appear"
-            // We strip the "za uplatu do..." text and just provide the date or "Odmah" if empty
-            val condition = if (baseDeadline.isNotEmpty()) baseDeadline else "Odmah"
+            val pctKey = "$pct%"
             
-            discountRows.add(DiscountRow("$pct%", condition, formattedAmount))
+            // Rule-based conditions
+            val condition = when (pct) {
+                5 -> "28.$month.$year."
+                6 -> "20.$month.$year. uz samoocitavanje"
+                7 -> "20.$month.$year. uz elektronski račun"
+                else -> "Odmah"
+            }
+            
+            discountRows.add(DiscountRow(pctKey, condition, formattedAmount))
         }
         return discountRows
     }
-
 }
 
 sealed class BillDetailsState {
@@ -429,7 +523,9 @@ sealed class BillDetailsState {
         val smartTotalDebt: Double = 0.0,
         val paidPastBillsSum: Double = 0.0,
         val billDebt: Double = 0.0,
-        val discountTable: List<DiscountRow>? = null
+        val discountTable: List<DiscountRow>? = null,
+        val infostanDeadline: String? = null,
+        val epsDiscountThreshold: String? = null
     ) : BillDetailsState()
     data class Error(val message: String) : BillDetailsState()
 }

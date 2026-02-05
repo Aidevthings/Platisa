@@ -80,3 +80,19 @@ val MIGRATION_14_15 = object : Migration(14, 15) {
     }
 }
 
+val MIGRATION_15_16 = object : Migration(15, 16) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        // No schema changes from 15 to 16 were explicitly tracked, 
+        // but version was bumped. Keeping as no-op.
+    }
+}
+
+val MIGRATION_16_17 = object : Migration(16, 17) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        // Add anomaly detection fields
+        database.execSQL("ALTER TABLE receipts ADD COLUMN isAnomalyConfirmed INTEGER NOT NULL DEFAULT 0")
+        database.execSQL("ALTER TABLE receipts ADD COLUMN anomalyType TEXT")
+        database.execSQL("ALTER TABLE receipts ADD COLUMN anomalyMessage TEXT")
+    }
+}
+

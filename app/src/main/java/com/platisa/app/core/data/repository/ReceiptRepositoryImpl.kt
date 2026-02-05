@@ -1,5 +1,7 @@
 package com.platisa.app.core.data.repository
 
+import androidx.room.withTransaction
+import com.platisa.app.core.data.database.PlatisaDatabase
 import com.platisa.app.core.data.database.dao.EpsDao
 import com.platisa.app.core.data.database.dao.ReceiptDao
 import com.platisa.app.core.data.database.dao.SectionDao
@@ -29,7 +31,8 @@ class ReceiptRepositoryImpl @Inject constructor(
     private val duplicateDetector: BillDuplicateDetector,
     private val preferenceManager: com.platisa.app.core.data.preferences.PreferenceManager,
     private val firestoreRepository: com.platisa.app.core.data.repository.FirestoreRepository, // Injected
-    private val secureStorage: com.platisa.app.core.domain.SecureStorage
+    private val secureStorage: com.platisa.app.core.domain.SecureStorage,
+    private val database: PlatisaDatabase
 ) : ReceiptRepository {
 
     override fun getAllReceipts(): Flow<List<Receipt>> {
@@ -98,12 +101,12 @@ class ReceiptRepositoryImpl @Inject constructor(
         
         when (duplicateCheck) {
             is DuplicateCheckResult.StornoPaidBill -> {
-                android.util.Log.e("ReceiptRepository", "🛑 BLOKIRANJE: STORNO za plaćen račun!")
+                android.util.Log.e("ReceiptRepository", "🛑 BLOKIRANJE (Storno): Invoice=${entity.invoiceNumber} -> ${duplicateCheck.message}")
                 throw DuplicateBillException(duplicateCheck.message)
             }
             
             is DuplicateCheckResult.DuplicatePaidBill -> {
-                android.util.Log.e("ReceiptRepository", "🛑 BLOKIRANJE: Duplikat plaćenog računa!")
+                android.util.Log.e("ReceiptRepository", "🛑 BLOKIRANJE (Plaćen): Invoice=${entity.invoiceNumber} -> ${duplicateCheck.message}")
                 throw DuplicateBillException(duplicateCheck.message)
             }
             
@@ -111,11 +114,11 @@ class ReceiptRepositoryImpl @Inject constructor(
                 // SYSTEMIC FIX: Check if the new receipt is STORNO and we already have a regular bill.
                 // In that case, we MUST NOT follow the "Debug Update Mode" skip/delete logic.
                 if (entity.isStorno) {
-                    android.util.Log.e("ReceiptRepository", "🛑 BLOKIRANJE STORNO RAČUNA: Original već postoji.")
+                    android.util.Log.e("ReceiptRepository", "🛑 BLOKIRANJE (Storno): Invoice=${entity.invoiceNumber} -> Original već postoji.")
                     throw DuplicateBillException(duplicateCheck.message)
                 }
 
-                android.util.Log.e("ReceiptRepository", "🛑 DUPLIKAT DETEKTOVAN - DEBUG UPDATE MODE")
+                android.util.Log.e("ReceiptRepository", "🛑 DUPLIKAT (Unpaid): Invoice=${entity.invoiceNumber} -> DEBUG UPDATE MODE")
                 // DEBUGGING MODE: Instead of throwing, we DELETE the old one and INSERT the new one
                 // This forces the "Debug Echo" address updates to be saved.
                 android.util.Log.d("ReceiptRepository", "♻️ BRISANJE STAROG RAČUNA RADI AŽURIRANJA: ${duplicateCheck.existingReceipt.id}")
@@ -124,7 +127,7 @@ class ReceiptRepositoryImpl @Inject constructor(
             }
             
             is DuplicateCheckResult.ReplaceExisting -> {
-                android.util.Log.d("ReceiptRepository", "♻️ ZAMENA: ${duplicateCheck.message}")
+                android.util.Log.d("ReceiptRepository", "♻️ ZAMENA: Invoice=${entity.invoiceNumber} -> ${duplicateCheck.message}")
                 receiptDao.deleteReceipt(duplicateCheck.existingReceipt)
                 // Continue to insert
             }
@@ -148,6 +151,27 @@ class ReceiptRepositoryImpl @Inject constructor(
         android.util.Log.d("ReceiptRepository", "✅ Račun umetnut sa ID: $insertedId")
         
         return insertedId
+    }
+
+    override suspend fun insertReceiptWithData(
+        receipt: Receipt,
+        epsData: EpsData?,
+        items: List<com.platisa.app.core.domain.model.ReceiptItem>?,
+        billingPeriod: String?
+    ): Long {
+        return database.withTransaction {
+            val receiptId = insertReceipt(receipt, billingPeriod)
+            
+            epsData?.let {
+                insertEpsData(it, receiptId)
+            }
+            
+            items?.let {
+                insertReceiptItems(it, receiptId)
+            }
+            
+            receiptId
+        }
     }
 
     override suspend fun insertEpsData(epsData: EpsData, receiptId: Long) {
@@ -253,27 +277,42 @@ class ReceiptRepositoryImpl @Inject constructor(
         android.util.Log.d("ReceiptRepository", "🔧 Found ${receiptsToFix.size} receipts to repair.")
         
         for (receipt in receiptsToFix) {
-            val newId = generateDeterministicId(receipt)
-            val isDifferent = newId != receipt.externalId
-            
-            if (isDifferent) {
-                // Determine if we should preserve PAID status during migration?
-                // Yes, if it was paid, keep it paid. Sync will handle the REST.
-                // NOTE: If we change the ID, the OLD ID on Firestore becomes orphan. That's acceptable for now.
+            try {
+                val newId = generateDeterministicId(receipt)
+                val isDifferent = newId != receipt.externalId
                 
-                val updated = receipt.copy(
-                    externalId = newId,
-                    metadata = (receipt.metadata ?: "") + " [ID_REPAIRED]"
-                )
-                
-                receiptDao.updateReceipt(updated.toEntity())
-                
-                // If it was paid, re-sync under NEW ID
-                if (updated.paymentStatus == com.platisa.app.core.domain.model.PaymentStatus.PAID) {
-                    syncPaidStatusToCloud(updated, isPaid = true)
+                if (isDifferent) {
+                    // 🔍 COLLISION CHECK: Does another receipt already have this NEW ID?
+                    val existingWithSameId = receiptDao.getReceiptByExternalId(newId)
+                    
+                    if (existingWithSameId != null && existingWithSameId.id != receipt.id) {
+                        android.util.Log.w("ReceiptRepository", "⚠️ CLASH DETECTED: Upgrading ID for ${receipt.id} -> $newId, but ${existingWithSameId.id} already has it!")
+                        
+                        // DECISION: Delete the one we are currently "repairing" because it's a redundant duplicate.
+                        // We keep 'existingWithSameId' because it already has the correct deterministic ID.
+                        android.util.Log.d("ReceiptRepository", "🗑️ Deleting redundant duplicate ID: ${receipt.id}")
+                        receiptDao.deleteReceipt(receipt.toEntity())
+                        repairedCount++
+                        continue
+                    }
+
+                    // Otherwise, proceed with update
+                    val updated = receipt.copy(
+                        externalId = newId,
+                        metadata = (receipt.metadata ?: "") + " [ID_REPAIRED]"
+                    )
+                    
+                    receiptDao.updateReceipt(updated.toEntity())
+                    
+                    // If it was paid, re-sync under NEW ID
+                    if (updated.paymentStatus == com.platisa.app.core.domain.model.PaymentStatus.PAID) {
+                        syncPaidStatusToCloud(updated, isPaid = true)
+                    }
+                    
+                    repairedCount++
                 }
-                
-                repairedCount++
+            } catch (e: Exception) {
+                android.util.Log.e("ReceiptRepository", "❌ Failed to repair receipt ${receipt.id}", e)
             }
         }
         
@@ -592,22 +631,22 @@ class ReceiptRepositoryImpl @Inject constructor(
             
             val shouldInsert = when (duplicateCheck) {
                 is DuplicateCheckResult.StornoPaidBill -> {
-                    android.util.Log.w("ReceiptRepository", "🛑 PRESKOČENO: STORNO za plaćen račun")
+                    android.util.Log.w("ReceiptRepository", "🛑 PRESAKOČENO (Storno): Invoice=${entity.invoiceNumber}")
                     skippedCount++
                     false
                 }
                 is DuplicateCheckResult.DuplicatePaidBill -> {
-                    android.util.Log.w("ReceiptRepository", "🛑 PRESKOČENO: Duplikat plaćenog računa")
+                    android.util.Log.w("ReceiptRepository", "🛑 PRESAKOČENO (Plaćen): Invoice=${entity.invoiceNumber}")
                     skippedCount++
                     false
                 }
                 is DuplicateCheckResult.DuplicateUnpaidBill -> {
-                    android.util.Log.w("ReceiptRepository", "🛑 PRESKOČENO: Duplikat neplaćenog računa - ${duplicateCheck.message}")
+                    android.util.Log.w("ReceiptRepository", "🛑 PRESAKOČENO (Unpaid): Invoice=${entity.invoiceNumber}")
                     skippedCount++
                     false
                 }
                 is DuplicateCheckResult.ReplaceExisting -> {
-                    android.util.Log.d("ReceiptRepository", "♻️ ZAMENA (Bulk): ${duplicateCheck.message}")
+                    android.util.Log.d("ReceiptRepository", "♻️ ZAMENA (Bulk): Invoice=${entity.invoiceNumber} -> ${duplicateCheck.message}")
                     receiptDao.deleteReceipt(duplicateCheck.existingReceipt)
                     true
                 }

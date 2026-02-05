@@ -1,0 +1,36 @@
+
+> Task :app:signingReport
+Variant: debug
+Config: debug
+Store: C:\Users\srlen\.android\debug.keystore
+Alias: AndroidDebugKey
+MD5: 06:16:DB:5B:CD:EE:A3:EA:6E:FE:A5:A9:4A:62:98:BE
+SHA1: F9:45:AE:C1:3A:7C:34:8F:6F:86:E1:82:58:51:3B:62:5F:58:F9:F0
+SHA-256: 0E:98:E8:2D:8A:F7:FD:D5:7A:30:C5:4F:5C:95:DC:7E:6F:66:F7:74:FB:B5:72:51:A2:4B:BD:38:12:A9:1C:D0
+Valid until: Sunday, August 1, 2055
+----------
+Variant: release
+Config: null
+Store: null
+Alias: null
+----------
+Variant: debugAndroidTest
+Config: debug
+Store: C:\Users\srlen\.android\debug.keystore
+Alias: AndroidDebugKey
+MD5: 06:16:DB:5B:CD:EE:A3:EA:6E:FE:A5:A9:4A:62:98:BE
+SHA1: F9:45:AE:C1:3A:7C:34:8F:6F:86:E1:82:58:51:3B:62:5F:58:F9:F0
+SHA-256: 0E:98:E8:2D:8A:F7:FD:D5:7A:30:C5:4F:5C:95:DC:7E:6F:66:F7:74:FB:B5:72:51:A2:4B:BD:38:12:A9:1C:D0
+Valid until: Sunday, August 1, 2055
+----------
+
+[Incubating] Problems report is available at: file:///A:/Software%20Dev/Platisa/build/reports/problems/problems-report.html
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/8.13/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD SUCCESSFUL in 840ms
+1 actionable task: 1 executed

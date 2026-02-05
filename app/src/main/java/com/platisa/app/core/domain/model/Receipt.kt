@@ -36,7 +36,12 @@ data class Receipt(
     val recipientName: String? = null,
     val recipientAddress: String? = null,
     val payerName: String? = null,
-    val payerAddress: String? = null
+    val payerAddress: String? = null,
+    
+    // Anomaly Detection
+    val isAnomalyConfirmed: Boolean = false,
+    val anomalyType: String? = null,
+    val anomalyMessage: String? = null
 ) {
     val category: BillCategory
         get() = BillCategorizer.categorize(merchantName)

@@ -31,7 +31,7 @@ object NetworkModule {
     @Singleton
     fun provideCurrencyApi(): com.platisa.app.core.data.network.CurrencyApi {
         return retrofit2.Retrofit.Builder()
-            .baseUrl("https://api.frankfurter.app/")
+            .baseUrl("https://open.er-api.com/v6/")
             .addConverterFactory(retrofit2.converter.gson.GsonConverterFactory.create())
             .build()
             .create(com.platisa.app.core.data.network.CurrencyApi::class.java)

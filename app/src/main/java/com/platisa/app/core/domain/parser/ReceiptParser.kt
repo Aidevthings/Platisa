@@ -18,7 +18,8 @@ data class ParsedReceipt(
     val recipientName: String? = null,
     val recipientAddress: String? = null,
     val payerName: String? = null,
-    val payerAddress: String? = null
+    val payerAddress: String? = null,
+    val discountDeadline: String? = null
 )
 
 object ReceiptParser {
@@ -35,6 +36,7 @@ object ReceiptParser {
         val dueDate = extractDueDate(text)
         val (name, addr) = extractRecipientInfo(text, merchant)
         val items = extractItems(text)
+        val discountDeadline = extractDiscountDeadline(text)
         
         return ParsedReceipt(
             merchantName = merchant, 
@@ -47,7 +49,8 @@ object ReceiptParser {
             recipientName = name,
             recipientAddress = addr,
             payerName = name,
-            payerAddress = addr
+            payerAddress = addr,
+            discountDeadline = discountDeadline
         )
     }
 
@@ -599,6 +602,13 @@ object ReceiptParser {
             // =====================================================================
             // MULTI-LINE SUPPORT (Telekom Srbija Fix)
             // =====================================================================
+            // 1A. JKP INFOSTAN SPECIAL PATTERN (Year/Month-ID e.g. 2026/01-0859349)
+            // This MUST be prioritized over generic partial matches to ensure we get the full ID.
+            Pattern.compile("(?:Broj\\s+računa|Broj\\s+racuna|Број\\s+рачуна)[:\\s]+(\\d{4}/\\d{2}-\\d+)", Pattern.CASE_INSENSITIVE),
+
+            // =====================================================================
+            // MULTI-LINE SUPPORT (Telekom Srbija Fix)
+            // =====================================================================
             // Matches "Račun broj" followed by whitespace/newlines and then the number
             // TOLERANT version: Matches "Račun" or "Racun", "Broj" matches "Broj"
             Pattern.compile("(?:Ra[c\u010d\u0107]un\\s+broj|Broj\\s+ra[c\u010d\u0107]una|Рачун\\s+број|Број\\s+рачуна)[:\\s]+(\\d+(?:\\s*[\\.-]\\s*\\d+)*)", Pattern.CASE_INSENSITIVE or Pattern.MULTILINE),
@@ -884,39 +894,37 @@ object ReceiptParser {
         }
         
         if (dateCandidates.isEmpty()) return null
+    
+        // Priority Keywords (Latin & Cyrillic) - specifically for ISSUE dates
+        val issueKeywords = listOf(
+            "DATUM IZDAVANJA", "DANA", "IZDAT", "PROMET", "MESTO", "BEOGRAD",
+            "ДАТУМ ИЗДАВАЊА", "ДАНА", "ИЗДАТ", "ПРОМЕТ", "МЕСТО", "БЕОГРАД"
+        )
         
-    if (dateCandidates.isEmpty()) return null
-    
-    // Priority Keywords (Latin & Cyrillic) - specifically for ISSUE dates
-    val issueKeywords = listOf(
-        "DATUM IZDAVANJA", "DANA", "IZDAT", "PROMET", "MESTO", "BEOGRAD",
-        "ДАТУМ ИЗДАВАЊА", "ДАНА", "ИЗДАТ", "ПРОМЕТ", "МЕСТО", "БЕОГРАД"
-    )
-    
-    // 1. Priority: Date on same line as "Issue" keywords
-    for ((date, line) in dateCandidates) {
-        val upperLine = line.uppercase()
-        if (issueKeywords.any { upperLine.contains(it) }) {
-            android.util.Log.d("ReceiptParser", "✅ Found Priority (Issue) Date: $date in line: $line")
-            return date
+        // 1. Priority: Date on same line as "Issue" keywords
+        for ((date, line) in dateCandidates) {
+            val upperLine = line.uppercase()
+            if (issueKeywords.any { upperLine.contains(it) }) {
+                android.util.Log.d("ReceiptParser", "✅ Found Priority (Issue) Date: $date in line: $line")
+                return date
+            }
         }
-    }
-    
-    // 2. Secondary: If multiple dates exist, pick the STABLE one. 
-    // Usually Issue Date is EARLIER than Due Date. 
-    // Phone A and Phone B might see dates in different OCR order, 
-    // but the set of dates is usually the same. min() is a stable choice.
-    if (dateCandidates.size > 1) {
-        val minDate = dateCandidates.minByOrNull { it.first.time }?.first
-        if (minDate != null) {
-            android.util.Log.d("ReceiptParser", "⚖️ MULTIPLE DATES: Selecting earliest (min) for stability: $minDate")
-            return minDate
+        
+        // 2. Secondary: If multiple dates exist, pick the STABLE one. 
+        // Usually Issue Date is EARLIER than Due Date. 
+        // Phone A and Phone B might see dates in different OCR order, 
+        // but the set of dates is usually the same. min() is a stable choice.
+        if (dateCandidates.size > 1) {
+            val minDate = dateCandidates.minByOrNull { it.first.time }?.first
+            if (minDate != null) {
+                android.util.Log.d("ReceiptParser", "⚖️ MULTIPLE DATES: Selecting earliest (min) for stability: $minDate")
+                return minDate
+            }
         }
+        
+        // 3. Fallback: Return the FIRST detected valid date
+        return dateCandidates.first().first
     }
-    
-    // 3. Fallback: Return the FIRST detected valid date
-    return dateCandidates.first().first
-}
 
     private fun extractDueDate(text: String): Date? {
         // Patterns for payment deadline - MUST SUPPORT BOTH LATIN AND CYRILLIC
@@ -1095,6 +1103,19 @@ object ReceiptParser {
              android.util.Log.d("ReceiptParser", "💵 PARSED AMOUNT candidate: $maxAmount from line: ${line.take(50)}")
         }
         return maxAmount
+    }
+
+    private fun extractDiscountDeadline(text: String): String? {
+        // Pattern for Infostan discount deadline: "do 18.02.2026. godine"
+        // Also supports Cyrillic "до 18.02.2026. године"
+        val pattern = Regex("""(?:do|до)\s+(\d{1,2}\.\d{1,2}\.\d{4})\.?\s*(?:godine|године)""", RegexOption.IGNORE_CASE)
+        val match = pattern.find(text)
+        val deadline = match?.groupValues?.get(1)
+        
+        if (deadline != null) {
+            android.util.Log.d("ReceiptParser", "🎯 Found DISCOUNT DEADLINE: $deadline")
+        }
+        return deadline
     }
 }
 

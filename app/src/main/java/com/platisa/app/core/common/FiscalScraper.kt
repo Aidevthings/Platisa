@@ -308,109 +308,70 @@ object FiscalScraper {
     }
 
     private fun extractMerchantFromJournal(doc: org.jsoup.nodes.Document): Pair<String, String>? {
-        // Look for the "Journal" preformatted text or div
+        // Look for the "Journal" section which usually preserves newlines in the raw text
         // Identified by header "=== ФИСКАЛНИ РАЧУН ===" (Cyrillic) or Latin equivalent
-        val content = doc.text() // Simple text search first for robustness
-        
         val headerCyrillic = "=== ФИСКАЛНИ РАЧУН ==="
         val headerLatin = "=== FISCALNI RAČUN ==="
         
-        val startIndex = when {
-            content.contains(headerCyrillic) -> content.indexOf(headerCyrillic)
-            content.contains(headerLatin) -> content.indexOf(headerLatin)
-            else -> -1
+        // Use wholeText() if available on the element to ensure newlines are preserved,
+        // otherwise doc.text() flattens it.
+        // We first find the element containing the header.
+        
+        val element = doc.getElementsContainingOwnText(headerCyrillic).firstOrNull() 
+                   ?: doc.getElementsContainingOwnText(headerLatin).firstOrNull() ?: return null
+
+        // Get text with structure. Jsoup's text() normalizes whitespace, so we try to get structure if possible.
+        // If it's in a <pre> tag, text() usually works. If it's <div> with <br>, text() flattens.
+        // However, we can try to split by known headers or just looking at the full text dump.
+        
+        // Safer approach: Get the whole document text or the element's structured text
+        // For Poreska Uprava, it's often a collection of spans or a pre block.
+        // Let's assume the previous splitting by "  " or "\n" was working for locating lines generally.
+        // We will try to reconstruct the block.
+        
+        val fullText = doc.text() // Fallback plain text
+        val rawBlock = element.wholeText() // Preserves whitespace
+        
+        // Decide which source to use. If rawBlock is short (just the header), use fullText.
+        val sourceText = if (rawBlock.length > 50) rawBlock else fullText
+        
+        val lines = sourceText.split("\n", "\r\n").map { it.trim() }.filter { it.isNotBlank() }
+        
+        // Find the header index
+        var headerIndex = -1
+        for (i in lines.indices) {
+            if (lines[i].contains(headerCyrillic) || lines[i].contains(headerLatin)) {
+                headerIndex = i
+                break
+            }
         }
         
-        if (startIndex != -1) {
-             val element = doc.getElementsContainingOwnText(headerCyrillic).firstOrNull() 
-                        ?: doc.getElementsContainingOwnText(headerLatin).firstOrNull()
-             
-             if (element != null) {
-                 val lines = element.text().split("\n", "\r\n", "  ").map { it.trim() }.filter { it.isNotBlank() }
-                 
-                 // Strategy: Find "Prodavnica" line and look AROUND it
-                 // Line N-1: Company Name (LIDL SRBIJA KD)
-                 // Line N: Store Name (1057450-Prodavnica br. 0166)
-                 // Line N+1: Address (KRALJA PETRA PRVOG 50)
-                 
-                 var prodavnicaIndex = -1
-                 for (i in lines.indices) {
-                     if (lines[i].contains("Prodavnica", ignoreCase = true) || 
-                         lines[i].contains("Продавница", ignoreCase = true) ||
-                         lines[i].contains("Store", ignoreCase = true)) {
-                         prodavnicaIndex = i
-                         break
-                     }
-                 }
-                 
-                 if (prodavnicaIndex > 0) {
-                     var formatName: String? = null
-                     var formatAddress: String? = null
-                     
-                     // 1. Find Name (Upwards)
-                     for (j in prodavnicaIndex - 1 downTo 0) {
-                         val candidate = lines[j]
-                         val isPib = candidate.replace(Regex("[^0-9]"), "").length == 9 && candidate.length < 15
-                         val isHeader = candidate.contains("===")
-                         
-                         if (!isPib && !isHeader && candidate.isNotBlank()) {
-                             formatName = candidate
-                             break
-                         }
-                     }
-                     
-                     // 2. Find Address (Downwards)
-                     if (prodavnicaIndex + 1 < lines.size) {
-                         formatAddress = lines[prodavnicaIndex + 1]
-                     }
-                     
-                     if (formatName != null) {
-                         return Pair(formatName.toTitleCase(), (formatAddress ?: "").toTitleCase())
-                     }
-                 }
-                 
-                 // Fallback: Sequential Header Parsing (Header -> PIB -> Name -> [Store] -> Address)
-                 // Useful for small shops that don't have a "Prodavnica" line
-                 var headerIndex = -1
-                 for (i in lines.indices) {
-                     if (lines[i].contains("ФИСКАЛНИ РАЧУН") || lines[i].contains("FISCALNI RAČUN")) {
-                         headerIndex = i
-                         break
-                     }
-                 }
-                 
-                 if (headerIndex != -1 && headerIndex + 2 < lines.size) {
-                     // Normally:
-                     // Header
-                     // PIB (Skip)
-                     // Name
-                     var nameIndex = headerIndex + 2
-                     
-                     // Safety check: is line+1 actually digits (PIB)?
-                     val lineAfterHeader = lines[headerIndex + 1]
-                     // If line+1 is NOT digits, maybe header was merged or formatting weird. 
-                     // But strictly, Poreska Uprava format is Header \n PIB \n Name
-                     
-                     val potentialName = lines[nameIndex]
-                     if (!potentialName.startsWith("Prodavnica") && !potentialName.startsWith("Store")) {
-                         var addressStr = ""
-                         // Look for address in next few lines
-                         if (nameIndex + 1 < lines.size) {
-                             val next = lines[nameIndex + 1]
-                             // If next is "Prodavnica", address is after that. Else next IS address.
-                             if (next.startsWith("Prodavnica", true) || next.startsWith("Store", true) || next.contains("1057450-")) {
-                                 if (nameIndex + 2 < lines.size) {
-                                     addressStr = lines[nameIndex + 2]
-                                 }
-                             } else {
-                                 addressStr = next
-                             }
-                         }
-                         return Pair(potentialName.toTitleCase(), addressStr.toTitleCase())
-                     }
-                 }
-             }
+        if (headerIndex != -1) {
+            // User Confirmation (2025-02-04):
+            // Row 1 (Index 0): Header "=== ... ==="
+            // Row 2 (Index 1): PIB (Tax ID) -> Skip
+            // Row 3 (Index 2): Name "dm drogerie markt..." -> EXTRACT (Merchant Name)
+            // Row 4 (Index 3): Code "1325274-J06K" -> Skip (Store ID)
+            // Row 5 (Index 4): Street "KORZO 10C" -> EXTRACT (Street Address)
+            // Row 6 (Index 5): Town "SUBOTICA" -> EXTRACT (Town)
+            
+            if (headerIndex + 5 < lines.size) {
+                // Name is Row 3 (Index 2)
+                val nameLine = lines[headerIndex + 2]
+                
+                // Street is Row 5 (Index 4)
+                val streetLine = lines[headerIndex + 4]
+                
+                // Town is Row 6 (Index 5)
+                val townLine = lines[headerIndex + 5]
+                
+                // Combine for full address
+                val fullAddress = "$streetLine, $townLine"
+                
+                return Pair(nameLine.toTitleCase(), fullAddress.toTitleCase())
+            }
         }
+        
         return null
     }
 

@@ -51,8 +51,8 @@ class ProfileViewModel @Inject constructor(
     )
 
     val celebrationImages = listOf(
-        "celebration_4", "celebration_dance", "macka", "celebration_3",
-        "fall", "fireworks"
+        "celebration_bosiljka", "celebration_dance", "celebration_4", "macka", 
+        "celebration_3", "fall"
     )
 
     val splashOptions = listOf(

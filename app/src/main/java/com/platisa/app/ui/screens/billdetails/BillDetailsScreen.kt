@@ -129,28 +129,36 @@ fun BillDetailsScreen(
         is BillDetailsState.Success -> {
             // Determine if popup should be shown:
             // Only for ELECTRICITY bills AND only for the LATEST bill (cascade payment system)
-            val shouldShowPopup = state.billType == BillType.ELECTRICITY && state.isLatestForMerchant
+            // AND only if reminder hasn't been set yet
+            val hasReminderSet = state.receipt.metadata?.contains("[REMINDER_SET]") == true
+            val shouldShowPopup = (state.billType == BillType.ELECTRICITY || state.infostanDeadline != null) && 
+                                 state.isLatestForMerchant && !hasReminderSet
             
             // State to control popup visibility
             var showDiscountPopup by remember { mutableStateOf(shouldShowPopup) }
             
             // Debug logging
-            android.util.Log.d("BillDetails", "🎯 POPUP: billType=${state.billType}, isLatest=${state.isLatestForMerchant}, shouldShow=$shouldShowPopup, showState=$showDiscountPopup")
+            android.util.Log.d("BillDetails", "🎯 POPUP: billType=${state.billType}, isLatest=${state.isLatestForMerchant}, hasReminder=$hasReminderSet, shouldShow=$shouldShowPopup")
             
             // Show discount popup overlay (only for latest electricity bills)
             if (showDiscountPopup) {
                 android.util.Log.d("BillDetails", "🎉 POPUP: Rendering DiscountPopup for latest electricity bill!")
                 DiscountPopup(
                     discountTable = state.discountTable,
+                    infostanDeadline = state.infostanDeadline,
                     onDismiss = { 
                         android.util.Log.d("BillDetails", "👋 POPUP: Dismissed by user")
                         showDiscountPopup = false 
                     },
                     onRemind = {
                         // Schedule reminder for the discount deadline
-                        // We extract ALL deadlines from the table and let the VM logic decide (T-1, dedup)
-                        val deadlines = state.discountTable?.mapNotNull { it.deadline } ?: emptyList()
-                        viewModel.scheduleDiscountReminder(deadlines)
+                        // We extract ALL deadlines from the table OR use the single Infostan deadline
+                        val deadlines = if (state.infostanDeadline != null) {
+                            listOf(state.infostanDeadline)
+                        } else {
+                            state.discountTable?.mapNotNull { it.deadline } ?: emptyList()
+                        }
+                        viewModel.scheduleDiscountReminder(state.receipt.id, deadlines)
                         showDiscountPopup = false
                     }
                 )
@@ -284,6 +292,46 @@ fun BillDetailsContent(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Spacer(modifier = Modifier.height(0.dp))
+                
+                // ANOMALY WARNING
+                if (receipt.anomalyType != null && !receipt.isAnomalyConfirmed) {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f)
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.error)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Warning,
+                                contentDescription = "Anomaly",
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                            Column {
+                                Text(
+                                    text = "Neuobičajen Iznos",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                                Text(
+                                    text = receipt.anomalyMessage ?: "Ovaj račun značajno odstupa od vašeg proseka.",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    lineHeight = 16.sp
+                                )
+                            }
+                        }
+                    }
+                }
 
                 // INFORMATION: Smart Debt Calculation
                 // Only show if we actually deducted something (paidPastBillsSum > 0)

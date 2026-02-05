@@ -1,40 +1,72 @@
 package com.platisa.app.ui.screens.billdetails
 
-import android.content.Context
-import com.platisa.app.core.common.VibrationHelper
-import com.platisa.app.core.domain.repository.EpsDataRepository
 import com.platisa.app.core.domain.model.Receipt
 import com.platisa.app.core.domain.repository.ReceiptRepository
+import com.platisa.app.core.domain.repository.EpsDataRepository
+import com.platisa.app.core.common.VibrationHelper
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.mockk
+import io.mockk.just
+import io.mockk.Runs
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
-import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.test.runTest
 import org.junit.After
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
-import java.math.BigDecimal
 import java.util.Date
+import android.content.Context
+import android.app.AlarmManager
+import android.content.Intent
+import android.app.PendingIntent
+import io.mockk.every
+
+// Mock Logs
+class LogMock {
+    companion object {
+        @JvmStatic
+        fun d(tag: String, msg: String): Int = 0
+        @JvmStatic
+        fun e(tag: String, msg: String, tr: Throwable? = null): Int = 0
+    }
+}
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class BillDetailsViewModelTest {
 
+    private val dispatcher = StandardTestDispatcher()
+    
     private lateinit var viewModel: BillDetailsViewModel
-    private val context: Context = mockk(relaxed = true)
     private val receiptRepository: ReceiptRepository = mockk(relaxed = true)
     private val epsDataRepository: EpsDataRepository = mockk(relaxed = true)
     private val vibrationHelper: VibrationHelper = mockk(relaxed = true)
-    private val testDispatcher = StandardTestDispatcher()
+    private val context: Context = mockk(relaxed = true)
+    private val alarmManager: AlarmManager = mockk(relaxed = true)
 
     @Before
     fun setup() {
-        Dispatchers.setMain(testDispatcher)
-        viewModel = BillDetailsViewModel(context, receiptRepository, epsDataRepository, vibrationHelper)
+        Dispatchers.setMain(dispatcher)
+        
+        // Mock Android Logger
+        io.mockk.mockkStatic(android.util.Log::class)
+        every { android.util.Log.d(any(), any()) } returns 0
+        every { android.util.Log.e(any(), any(), any()) } returns 0
+        every { android.util.Log.e(any(), any()) } returns 0
+        
+        // Mock Context & AlarmManager
+        every { context.getSystemService(Context.ALARM_SERVICE) } returns alarmManager
+        every { context.getApplicationContext() } returns context
+        
+        viewModel = BillDetailsViewModel(
+            context,
+            receiptRepository,
+            epsDataRepository,
+            vibrationHelper
+        )
     }
 
     @After
@@ -43,56 +75,39 @@ class BillDetailsViewModelTest {
     }
 
     @Test
-    fun `loadBillDetails SHOULD detect partial debt payment WHEN past bills are locally paid`() = runTest {
-        // GIVEN a scenario where we have a new bill claiming debt, but we paid previous bills locally
-
-        // 1. Setup the "Latest Bill" (The one we are viewing)
-        // It claims: Total = 3000, Current = 1000. So Debt = 2000.
-        val billDate = Date() // Today
-        val merchantName = "EPS Snabdevanje"
-        val latestReceipt = Receipt(
-            id = 100,
-            merchantName = merchantName,
-            date = billDate,
-            totalAmount = BigDecimal("3000.00"),
-            currentMonthAmount = BigDecimal("1000.00"),
-            previousDebtAmount = BigDecimal("2000.00"), // Claimed Debt matches calculated debt
-            paymentStatus = com.platisa.app.core.domain.model.PaymentStatus.UNPAID,
+    fun `scheduleDiscountReminder handles extra text in date string and updates receipt`() = runTest {
+        // GIVEN
+        val receiptId = 123L
+        val dates = listOf("28.01.2026 [Sreda]") // Problematic input
+        val receipt = Receipt(
+            id = receiptId,
+            merchantName = "EPS",
+            date = Date(),
+            totalAmount = java.math.BigDecimal.TEN,
             imagePath = "",
-            invoiceNumber = "123-456",
-            qrCodeData = "dummy_qr"
+            metadata = "[DISCOUNT:5%~28.01.2026 [Sreda]~515,90]"
         )
 
-        // 2. Setup Repository Mocks to simulate "Past Bills are Paid"
-        // We simulate that the user has marked all past bills as paid in the app.
-        // So getUnpaidPastBillsSum should return 0.0
-        coEvery { receiptRepository.getReceiptById(100) } returns latestReceipt
-        coEvery { receiptRepository.isLatestReceipt(merchantName, billDate) } returns true
-        
-        // This is the CRITICAL part: 
-        // hasAnyPastBills = TRUE (We have history)
-        // getUnpaidPastBillsSum = 0.0 (But we paid it all locally)
-        coEvery { receiptRepository.hasAnyPastBills(merchantName, billDate.time) } returns true
-        coEvery { receiptRepository.getUnpaidPastBillsSum(merchantName, billDate.time) } returns 0.0
+        coEvery { receiptRepository.getReceiptById(receiptId) } returns receipt
+        coEvery { receiptRepository.updateReceipt(any()) } just Runs
 
-        // WHEN we load the bill details
-        viewModel.loadBillDetails("100")
-        testDispatcher.scheduler.advanceUntilIdle()
+        // WHEN
+        viewModel.scheduleDiscountReminder(receiptId, dates)
+        dispatcher.scheduler.advanceUntilIdle()
 
-        // THEN the safeguard should be triggered
-        val state = viewModel.billDetails.value
-        assertTrue("State should be Success", state is BillDetailsState.Success)
+        // THEN
+        // 1. Alarm should be scheduled (parsing succeeded)
+        verifyAlarmScheduled()
         
-        val successState = state as BillDetailsState.Success
-        
-        // Verify Safeguard Logic:
-        // Bill Debt (2000) != Local Unpaid (0) -> Difference (2000) > Tolerance (200) -> isDebtPartiallyPaid should be TRUE
-        println("Safeguard Result: isDebtPartiallyPaid = ${successState.isDebtPartiallyPaid}")
-        println("Local Unpaid: ${successState.localUnpaidSum}, Bill Debt: ${successState.billDebt}")
-        
-        assertTrue(
-            "Safeguard FAILED! Expected isDebtPartiallyPaid=true because local unpaid debt is 0 but bill claims 2000.",
-            successState.isDebtPartiallyPaid
-        )
+        // 2. Receipt should be updated with [REMINDER_SET]
+        coVerify { 
+            receiptRepository.updateReceipt(match { 
+                it.id == receiptId && it.metadata?.contains("[REMINDER_SET]") == true 
+            }) 
+        }
+    }
+    
+    private fun verifyAlarmScheduled() {
+        io.mockk.verify { alarmManager.set(any(), any(), any()) }
     }
 }

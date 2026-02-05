@@ -59,11 +59,31 @@ object IpsParser {
             }
         }
 
+        var refinedReferenceNumber = map["RO"]
+        
+        // JKP INFOSTAN FIX (Global for Camera & Gmail):
+        // Override the Reference Number (RO) which is just a static Space Code.
+        // Extract the unique Bill Number (e.g. 2026/01-0859349) from Purpose (S).
+        // Only apply if Recipient (N) indicates Infostan.
+        val recipientName = map["N"]
+        val purposeDesc = map["S"]
+        
+        if (recipientName != null && (recipientName.contains("INFOSTAN", ignoreCase = true) || recipientName.contains("JKP", ignoreCase = true))) {
+             if (purposeDesc != null) {
+                 val billNumberRegex = Regex("""(\d{4}/\d{2}-\d+)""")
+                 val match = billNumberRegex.find(purposeDesc)
+                 if (match != null) {
+                     refinedReferenceNumber = match.value
+                     // Log isn't easily available here in pure object, but this value propagates to data model
+                 }
+             }
+        }
+
         return IpsData(
             recipientName = map["N"],
             recipientAccount = map["R"],
             amount = amount,
-            referenceNumber = map["RO"],
+            referenceNumber = refinedReferenceNumber,
             purposeCode = map["SF"],
             purposeDescription = map["S"],
             payerName = payerName,
