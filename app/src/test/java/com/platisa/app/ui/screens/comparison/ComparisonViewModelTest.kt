@@ -44,6 +44,8 @@ class ComparisonViewModelTest {
         
         // Default mocks
         every { preferenceManager.hasScannedRestaurantBill } returns false
+        every { preferenceManager.themeFlow } returns kotlinx.coroutines.flow.MutableStateFlow(true)
+        every { preferenceManager.lastKnownEuroRate } returns 117.0f
         
         viewModel = ComparisonViewModel(repository, preferenceManager, secureStorage, vibrationHelper)
     }

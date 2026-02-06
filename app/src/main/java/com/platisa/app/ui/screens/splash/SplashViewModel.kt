@@ -64,7 +64,16 @@ class SplashViewModel @Inject constructor(
             // So we wait for delay, and if migration is still running, we let it run in background.
             delayJob.join()
 
-            val account = GoogleAuthManager.getSignedInAccount(context)
+            android.util.Log.d("SplashViewModel", "⏳ Checking Google account status...")
+            val account = try {
+                GoogleAuthManager.getSignedInAccount(context)
+            } catch (e: Exception) {
+                android.util.Log.e("SplashViewModel", "❌ Error checking Google account: ${e.message}", e)
+                null
+            }
+            
+            android.util.Log.d("SplashViewModel", "✅ Account check complete. Account: ${account?.email ?: "None"}")
+
             if (account != null) {
                 if (secureStorage.isOnboardingCompleted()) {
                     _splashState.value = SplashState.NavigateToHome

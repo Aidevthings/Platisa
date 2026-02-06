@@ -72,6 +72,8 @@ fun HomeScreen(
     val connectedAccount by viewModel.connectedAccount.collectAsState()
     val userName by viewModel.userName.collectAsState()
     val avatarPath by viewModel.avatarPath.collectAsState()
+    val cameraAvatarPath by viewModel.cameraAvatarPath.collectAsState()
+    val avatarUpdateVersion by viewModel.avatarUpdateVersion.collectAsState()
     val celebrationImagePath by viewModel.celebrationImagePath.collectAsState()
     val selectedPeriod by viewModel.selectedHomePeriod.collectAsState()
     val totalPaid by viewModel.totalPaid.collectAsState()
@@ -311,24 +313,20 @@ fun HomeScreen(
         ) {
             // New Image Background
             com.platisa.app.ui.components.AppBackground()
-            // Background gradient blur - ONLY behind header (stops before summary grid)
+            // Background gradient - simplified (Removed heavy blur)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(80.dp) // EXACT header height only
                     .align(Alignment.TopCenter)
                     .background(
-                        Brush.radialGradient(
+                        Brush.verticalGradient(
                             colors = listOf(
-                                Color(0xFF0288D1).copy(alpha = 0.3f), // Light Blue
-                                Color(0xFF00E5FF).copy(alpha = 0.3f), // Cyan
-                                Color(0xFFB3E5FC).copy(alpha = 0.3f)  // Pale Blue
-                            ),
-                            center = androidx.compose.ui.geometry.Offset(0.5f, 0.5f),
-                            radius = 500f
+                                Color(0xFF0288D1).copy(alpha = 0.5f), // Light Blue
+                                Color.Transparent
+                            )
                         )
                     )
-                    .blur(40.dp)
             )
 
             Column(modifier = Modifier.fillMaxSize()) {
@@ -395,20 +393,41 @@ fun HomeScreen(
                                                 currentAvatarPath.startsWith("custom:") -> {
                                                     val file = java.io.File(currentAvatarPath.removePrefix("custom:"))
                                                     androidx.compose.foundation.Image(
-                                                        painter = coil.compose.rememberAsyncImagePainter(file),
+                                                        painter = coil.compose.rememberAsyncImagePainter(
+                                                            model = coil.request.ImageRequest.Builder(context)
+                                                                .data(file)
+                                                                .memoryCacheKey("avatar_${currentAvatarPath}_$avatarUpdateVersion")
+                                                                .build()
+                                                        ),
                                                         contentDescription = "Avatar",
                                                         modifier = Modifier.fillMaxSize(),
                                                         contentScale = androidx.compose.ui.layout.ContentScale.Crop
                                                     )
                                                 }
                                                 currentAvatarPath.startsWith("camera:") -> {
-                                                    val file = java.io.File(currentAvatarPath.removePrefix("camera:"))
-                                                    androidx.compose.foundation.Image(
-                                                        painter = coil.compose.rememberAsyncImagePainter(file),
-                                                        contentDescription = "Avatar",
-                                                        modifier = Modifier.fillMaxSize(),
-                                                        contentScale = androidx.compose.ui.layout.ContentScale.Crop
-                                                    )
+                                                    val path = currentAvatarPath.removePrefix("camera:")
+                                                    val file = java.io.File(path)
+                                                    val finalFile = if (file.exists()) file else cameraAvatarPath?.let { java.io.File(it) }
+                                                    
+                                                    if (finalFile != null && finalFile.exists()) {
+                                                        androidx.compose.foundation.Image(
+                                                            painter = coil.compose.rememberAsyncImagePainter(
+                                                                model = coil.request.ImageRequest.Builder(context)
+                                                                    .data(finalFile)
+                                                                    .memoryCacheKey("avatar_${currentAvatarPath}_$avatarUpdateVersion")
+                                                                    .build()
+                                                            ),
+                                                            contentDescription = "Avatar",
+                                                            modifier = Modifier.fillMaxSize(),
+                                                            contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                                                        )
+                                                    } else {
+                                                        Icon(
+                                                            imageVector = Icons.Default.Person,
+                                                            contentDescription = "Avatar",
+                                                            modifier = Modifier.size(32.dp)
+                                                        )
+                                                    }
                                                 }
                                                 currentAvatarPath.startsWith("predefined:") -> {
                                                     val resName = currentAvatarPath.removePrefix("predefined:")
@@ -1246,22 +1265,21 @@ fun Glass3DIcon(
 
         // 3D Levitation/Structure Effect for the Icon Symbol
         Box(contentAlignment = Alignment.Center) {
-            // 1. Drop Shadow (Soft, far) - Gives "floating" height
+            // 1. Drop Shadow (Simulated with offset icon) - Cheaper than .blur()
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = Color.Black.copy(alpha = 0.4f),
+                tint = Color.Black.copy(alpha = 0.3f),
                 modifier = Modifier
                     .size(32.dp)
-                    .offset(x = 3.dp, y = 4.dp)
-                    .blur(radius = 3.dp) 
+                    .offset(x = 2.dp, y = 3.dp)
             )
 
             // 2. Extrusion / Hard Edge (Close, darker) - Gives "thickness"
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = Color.Black.copy(alpha = 0.6f),
+                tint = Color.Black.copy(alpha = 0.5f),
                 modifier = Modifier
                     .size(32.dp)
                     .offset(x = 1.dp, y = 1.dp)

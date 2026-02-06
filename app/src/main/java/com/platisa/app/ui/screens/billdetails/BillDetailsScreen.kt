@@ -180,7 +180,8 @@ fun BillDetailsScreen(
                 localUnpaidSum = state.localUnpaidSum,
                 billDebt = state.billDebt,
                 smartTotalDebt = state.smartTotalDebt,
-                paidPastBillsSum = state.paidPastBillsSum
+                paidPastBillsSum = state.paidPastBillsSum,
+                currency = state.currency
             )
         }
     }
@@ -203,7 +204,8 @@ fun BillDetailsContent(
     localUnpaidSum: Double = 0.0,
     billDebt: Double = 0.0,
     smartTotalDebt: Double = 0.0,
-    paidPastBillsSum: Double = 0.0
+    paidPastBillsSum: Double = 0.0,
+    currency: String = "RSD"
 ) {
     val customColors = LocalPlatisaColors.current
     // Extract QR code URL from receipt
@@ -263,7 +265,7 @@ fun BillDetailsContent(
     }
 
     // Format amount
-    val formattedAmount = com.platisa.app.core.common.Formatters.formatCurrency(displayAmount)
+    val formattedAmount = com.platisa.app.core.common.Formatters.formatCurrencyWithSuffix(displayAmount, currency)
 
     // Format date
     val formattedDate = SimpleDateFormat("dd. MMMM yyyy", Locale("sr", "Latn", "RS")).format(receipt.date)
@@ -372,7 +374,7 @@ fun BillDetailsContent(
                                     color = customColors.neonCyan
                                 )
                                 Text(
-                                    text = "Vaš ukupan dug je umanjen za račune koje ste već platili kroz aplikaciju (${com.platisa.app.core.common.Formatters.formatCurrency(BigDecimal(paidPastBillsSum))}).",
+                                    text = "Vaš ukupan dug je umanjen za račune koje ste već platili kroz aplikaciju (${com.platisa.app.core.common.Formatters.formatCurrencyWithSuffix(BigDecimal(paidPastBillsSum), currency)}).",
                                     fontSize = 12.sp,
                                     color = MaterialTheme.colorScheme.onSurface,
                                     lineHeight = 16.sp
@@ -393,7 +395,8 @@ fun BillDetailsContent(
                         currentMonthAmount = currentAmount,
                         totalDebtAmount = totalDebtAmount,
                         isTotalDebtDisabled = false, // Always enabled if shown
-                        showTotalDebtOption = true
+                        showTotalDebtOption = true,
+                        currency = currency
                     )
                 }
 
@@ -544,7 +547,7 @@ fun BillDetailsContent(
                 
                 // Receipt Items Section (for fiscal receipts)
                 if (receiptItems.isNotEmpty()) {
-                    ReceiptItemsSection(items = receiptItems)
+                    ReceiptItemsSection(items = receiptItems, currency = currency)
                 }
 
                 Spacer(modifier = Modifier.height(80.dp))
@@ -1270,7 +1273,7 @@ fun DataFieldMultiline(
 }
 
 @Composable
-fun ReceiptItemsSection(items: List<com.platisa.app.core.domain.model.ReceiptItem>) {
+fun ReceiptItemsSection(items: List<com.platisa.app.core.domain.model.ReceiptItem>, currency: String = "RSD") {
     val customColors = LocalPlatisaColors.current
     Column(
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -1317,7 +1320,7 @@ fun ReceiptItemsSection(items: List<com.platisa.app.core.domain.model.ReceiptIte
                             )
                             if (item.unitPrice != null && item.unitPrice != java.math.BigDecimal.ZERO) {
                                 Text(
-                                    text = "× ${com.platisa.app.core.common.Formatters.formatCurrency(item.unitPrice)}",
+                                    text = "× ${com.platisa.app.core.common.Formatters.formatCurrencyWithSuffix(item.unitPrice, currency)}",
                                     fontSize = 13.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -1325,7 +1328,7 @@ fun ReceiptItemsSection(items: List<com.platisa.app.core.domain.model.ReceiptIte
                         }
                     }
                     Text(
-                        text = com.platisa.app.core.common.Formatters.formatCurrency(item.total ?: java.math.BigDecimal.ZERO),
+                        text = com.platisa.app.core.common.Formatters.formatCurrencyWithSuffix(item.total ?: java.math.BigDecimal.ZERO, currency),
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
                         color = customColors.neonPurple
@@ -1352,7 +1355,8 @@ fun PaymentOptionSelector(
     currentMonthAmount: BigDecimal,
     totalDebtAmount: BigDecimal,
     isTotalDebtDisabled: Boolean = false, // New parameter
-    showTotalDebtOption: Boolean = true // New parameter to control visibility of the second option
+    showTotalDebtOption: Boolean = true, // New parameter to control visibility of the second option
+    currency: String = "RSD"
 ) {
     val customColors = LocalPlatisaColors.current
     
@@ -1387,7 +1391,8 @@ fun PaymentOptionSelector(
                 amount = currentMonthAmount,
                 isSelected = selectedOption == PaymentOption.CURRENT_MONTH || !showTotalDebtOption, // Select if only option
                 onClick = { onOptionSelected(PaymentOption.CURRENT_MONTH) },
-                color = customColors.neonCyan
+                color = customColors.neonCyan,
+                currency = currency
             )
 
             // Option 2: Total Debt (Conditional)
@@ -1398,7 +1403,8 @@ fun PaymentOptionSelector(
                     isSelected = selectedOption == PaymentOption.TOTAL_DEBT,
                     onClick = { onOptionSelected(PaymentOption.TOTAL_DEBT) },
                     color = if (isTotalDebtDisabled) Color.Gray else customColors.neonPurple, // Gray out if disabled
-                    isEnabled = !isTotalDebtDisabled // New parameter
+                    isEnabled = !isTotalDebtDisabled, // New parameter
+                    currency = currency
                 )
             }
         }
@@ -1435,7 +1441,8 @@ fun PaymentOptionCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     color: Color,
-    isEnabled: Boolean = true // New parameter
+    isEnabled: Boolean = true, // New parameter
+    currency: String = "RSD"
 ) {
     // Visual State Logic
     val borderColor = if (isSelected) color else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
@@ -1488,7 +1495,7 @@ fun PaymentOptionCard(
             
             // Right Side: Amount - LARGER
             Text(
-                text = com.platisa.app.core.common.Formatters.formatCurrency(amount).replace(" RSD", ""),
+                text = com.platisa.app.core.common.Formatters.formatCurrencyWithSuffix(amount, currency),
                 fontSize = 28.sp, // Increased from 24.sp
                 fontWeight = FontWeight.Bold,
                 color = amountColor

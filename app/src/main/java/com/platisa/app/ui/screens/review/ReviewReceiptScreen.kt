@@ -71,6 +71,7 @@ fun ReviewReceiptScreen(
     val isPdfSource by viewModel.isPdfSource.collectAsState()
     val isDuplicate by viewModel.isDuplicate.collectAsState()
     val duplicateReceiptId by viewModel.duplicateReceiptId.collectAsState()
+    val currency by viewModel.currency.collectAsState()
     
     // Manual URL Dialog State
     var showUrlDialog by remember { mutableStateOf(false) }
@@ -538,7 +539,7 @@ fun ReviewReceiptScreen(
                         value = total,
                         onValueChange = { if (!isExistingReceipt) total = it },
                         label = "Ukupan Iznos",
-                        suffix = { Text("dinara") },
+                        suffix = { Text(if (currency == "EUR") "evra" else "dinara") },
                         readOnly = isExistingReceipt
                     )
                     Spacer(modifier = Modifier.height(16.dp))

@@ -57,6 +57,7 @@ fun ProfileScreen(
     val userName by viewModel.userName.collectAsState()
     val avatarPath by viewModel.avatarPath.collectAsState()
     val cameraAvatarPath by viewModel.cameraAvatarPath.collectAsState()
+    val avatarUpdateVersion by viewModel.avatarUpdateVersion.collectAsState()
     val celebrationImagePath by viewModel.celebrationImagePath.collectAsState()
     val splashStyle by viewModel.splashScreenStyle.collectAsState()
     val customColors = LocalPlatisaColors.current
@@ -86,36 +87,19 @@ fun ProfileScreen(
         uri?.let { viewModel.setAvatarFromUri(it) }
     }
     
-    // Create temp file for camera photo
-    fun createImageFile(): java.io.File {
-        val avatarsDir = java.io.File(context.filesDir, "avatars")
-        if (!avatarsDir.exists()) avatarsDir.mkdirs()
-        return java.io.File(avatarsDir, "avatar_camera_${System.currentTimeMillis()}.jpg")
-    }
-    
     val cameraLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == android.app.Activity.RESULT_OK) {
-            // Check if we have a bitmap in the result data (some cameras return thumbnail)
-            val bitmap = result.data?.extras?.get("data") as? android.graphics.Bitmap
-            if (bitmap != null) {
-                try {
-                    val avatarsDir = java.io.File(context.filesDir, "avatars")
-                    if (!avatarsDir.exists()) avatarsDir.mkdirs()
-                    val fileName = "avatar_camera_latest.jpg"
-                    val destFile = java.io.File(avatarsDir, fileName)
-                    java.io.FileOutputStream(destFile).use { out ->
-                        bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, out)
-                    }
-                    viewModel.setAvatarFromUri(Uri.fromFile(destFile), isCamera = true)
-                } catch (e: Exception) {
-                    android.widget.Toast.makeText(context, "Greška pri čuvanju slike", android.widget.Toast.LENGTH_SHORT).show()
-                }
-            } else if (photoUri != null) {
-                // Use the saved file URI
-                viewModel.setAvatarFromUri(photoUri!!, isCamera = true)
+            // High-res photo is saved to photoUri
+            photoUri?.let { uri ->
+                android.util.Log.d("ProfileScreen", "Photo captured successfully: $uri")
+                viewModel.setAvatarFromUri(uri, isCamera = true)
+            } ?: run {
+                android.util.Log.e("ProfileScreen", "Photo URI is null after capture")
             }
+        } else {
+            android.util.Log.d("ProfileScreen", "Camera capture cancelled or failed")
         }
     }
     
@@ -124,17 +108,39 @@ fun ProfileScreen(
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         if (isGranted) {
-            val intent = android.content.Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE)
-            // Standard Android extras for front camera
-            intent.putExtra("android.intent.extras.CAMERA_FACING", 1) // 1 = front
-            intent.putExtra("android.intent.extras.LENS_FACING_FRONT", 1)
-            intent.putExtra("android.intent.extra.USE_FRONT_CAMERA", true)
-            // Samsung-specific extras
-            intent.putExtra("camerafacing", "front")
-            intent.putExtra("previous_mode", "Selfie")
-            // Google Camera specific
-            intent.putExtra("com.google.assistant.extra.USE_FRONT_CAMERA", true)
-            cameraLauncher.launch(intent)
+            try {
+                val avatarsDir = java.io.File(context.filesDir, "avatars")
+                if (!avatarsDir.exists()) avatarsDir.mkdirs()
+                
+                // Always use the same file for the "camera slot" to replace it
+                val fileName = "avatar_camera_latest.jpg"
+                val photoFile = java.io.File(avatarsDir, fileName)
+                
+                // Get URI using FileProvider
+                val uri = androidx.core.content.FileProvider.getUriForFile(
+                    context,
+                    "${context.packageName}.provider",
+                    photoFile
+                )
+                photoUri = uri
+
+                val intent = android.content.Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE).apply {
+                    putExtra(android.provider.MediaStore.EXTRA_OUTPUT, uri)
+                    addFlags(android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                    
+                    // Front camera hints
+                    putExtra("android.intent.extras.CAMERA_FACING", 1) // 1 = front
+                    putExtra("android.intent.extras.LENS_FACING_FRONT", 1)
+                    putExtra("android.intent.extra.USE_FRONT_CAMERA", true)
+                    putExtra("camerafacing", "front")
+                    putExtra("previous_mode", "Selfie")
+                }
+                
+                cameraLauncher.launch(intent)
+            } catch (e: Exception) {
+                android.util.Log.e("ProfileScreen", "Error launching camera", e)
+                android.widget.Toast.makeText(context, "Greška pri pokretanju kamere", android.widget.Toast.LENGTH_SHORT).show()
+            }
         } else {
             android.widget.Toast.makeText(context, "Potrebna je dozvola za kameru", android.widget.Toast.LENGTH_SHORT).show()
         }
@@ -213,21 +219,28 @@ fun ProfileScreen(
                     ) {
                         if (avatarPath != null) {
                             // Show custom avatar
+                            val model = remember(avatarPath, avatarUpdateVersion) {
+                                when {
+                                    avatarPath!!.startsWith("custom:") -> {
+                                        File(avatarPath!!.removePrefix("custom:"))
+                                    }
+                                    avatarPath!!.startsWith("camera:") -> {
+                                        File(avatarPath!!.removePrefix("camera:"))
+                                    }
+                                    else -> {
+                                        // Predefined avatar using resource identifier
+                                        val resName = avatarPath!!.removePrefix("predefined:")
+                                        context.resources.getIdentifier(resName, "drawable", context.packageName)
+                                    }
+                                }
+                            }
+                            
                             Image(
                                 painter = rememberAsyncImagePainter(
-                                    when {
-                                        avatarPath!!.startsWith("custom:") -> {
-                                            File(avatarPath!!.removePrefix("custom:"))
-                                        }
-                                        avatarPath!!.startsWith("camera:") -> {
-                                            File(avatarPath!!.removePrefix("camera:"))
-                                        }
-                                        else -> {
-                                            // Predefined avatar using resource identifier
-                                            val resName = avatarPath!!.removePrefix("predefined:")
-                                            context.resources.getIdentifier(resName, "drawable", context.packageName)
-                                        }
-                                    }
+                                    model = coil.request.ImageRequest.Builder(context)
+                                        .data(model)
+                                        .memoryCacheKey("avatar_${avatarPath}_$avatarUpdateVersion")
+                                        .build()
                                 ),
                                 contentDescription = "Avatar",
                                 modifier = Modifier.fillMaxSize(),
@@ -333,6 +346,7 @@ fun ProfileScreen(
                             CameraAvatarSlot(
                                 cameraAvatarPath = cameraAvatarPath,
                                 isSelected = avatarPath?.startsWith("camera:") == true,
+                                version = avatarUpdateVersion,
                                 onClick = { 
                                     if (cameraAvatarPath != null) {
                                         viewModel.setAvatarFromCameraSlot()
@@ -547,36 +561,58 @@ fun SectionTitle(title: String) {
 fun CameraAvatarSlot(
     cameraAvatarPath: String?,
     isSelected: Boolean,
+    version: Long = 0L,
     onClick: () -> Unit
 ) {
     val customColors = LocalPlatisaColors.current
-    Box(
-        modifier = Modifier
-            .size(70.dp)
-            .clip(CircleShape)
-            .border(
-                width = if (isSelected) 3.dp else 1.dp,
-                color = if (isSelected) customColors.neonCyan else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
-                shape = CircleShape
-            )
-            .background(MaterialTheme.colorScheme.surface)
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) {
-        if (cameraAvatarPath != null) {
-            Image(
-                painter = rememberAsyncImagePainter(model = File(cameraAvatarPath)),
-                contentDescription = "Camera Avatar",
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
-            )
-        } else {
-            Icon(
-                imageVector = Icons.Default.AddAPhoto,
-                contentDescription = "Take Photo",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                modifier = Modifier.size(30.dp)
-            )
+    val context = LocalContext.current
+    
+    // Force recomposition when version changes
+    key(version) {
+        Box(
+            modifier = Modifier
+                .size(70.dp)
+                .clip(CircleShape)
+                .border(
+                    width = if (isSelected) 3.dp else 1.dp,
+                    color = if (isSelected) customColors.neonCyan else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+                    shape = CircleShape
+                )
+                .background(MaterialTheme.colorScheme.surface)
+                .clickable(onClick = onClick),
+            contentAlignment = Alignment.Center
+        ) {
+            if (cameraAvatarPath != null) {
+                val file = File(cameraAvatarPath)
+                if (file.exists()) {
+                    Image(
+                        painter = rememberAsyncImagePainter(
+                            model = coil.request.ImageRequest.Builder(context)
+                                .data(file)
+                                .memoryCacheKey("slot_${cameraAvatarPath}_$version")
+                                .diskCachePolicy(coil.request.CachePolicy.DISABLED) // Ensure we don't read stale disk cache
+                                .build()
+                        ),
+                        contentDescription = "Camera Avatar",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.AddAPhoto,
+                        contentDescription = "Take Photo",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                        modifier = Modifier.size(30.dp)
+                    )
+                }
+            } else {
+                Icon(
+                    imageVector = Icons.Default.AddAPhoto,
+                    contentDescription = "Take Photo",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.size(30.dp)
+                )
+            }
         }
     }
 }

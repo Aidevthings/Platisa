@@ -13,6 +13,7 @@ import com.platisa.app.core.data.parser.EpsParser
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -29,12 +30,20 @@ class ReviewReceiptViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     @ApplicationContext private val context: Context,
     private val repository: ReceiptRepository,
+    private val secureStorage: com.platisa.app.core.domain.SecureStorage,
+    private val preferenceManager: com.platisa.app.core.data.preferences.PreferenceManager,
     private val vibrationHelper: com.platisa.app.core.common.VibrationHelper
 ) : BaseViewModel() {
 
     fun vibrate(type: com.platisa.app.core.common.VibrationHelper.HapticType) {
         vibrationHelper.vibrate(type)
     }
+
+    private val _currency = MutableStateFlow(secureStorage.getCurrency())
+    val currency: StateFlow<String> = _currency.asStateFlow()
+
+    private val _conversionRate = MutableStateFlow(java.math.BigDecimal(preferenceManager.lastKnownEuroRate.toDouble()))
+    val conversionRate: StateFlow<java.math.BigDecimal> = _conversionRate.asStateFlow()
 
     private val imageUriString: String = checkNotNull(savedStateHandle["imageUri"])
     val imageUri: Uri = if (imageUriString.startsWith("/")) {
@@ -129,20 +138,19 @@ class ReviewReceiptViewModel @Inject constructor(
             // First check if this receipt already exists in the database
             val existingReceipt = repository.getReceiptByPath(imageUriString)
             
-            // FORCE DEBUG: Ignore existing receipt to always trigger scraper
-            if (false && existingReceipt != null) {
+            if (existingReceipt != null) {
                 // Load from DB - this is an existing receipt (Gmail or previously saved)
                 _isExistingReceipt.value = true
-                existingReceiptId = existingReceipt.id
+                existingReceiptId = existingReceipt!!.id
                 _parsedReceipt.value = ParsedReceipt(
-                    merchantName = existingReceipt.merchantName,
-                    date = existingReceipt.date,
-                    totalAmount = existingReceipt.totalAmount,
-                    qrCodeData = existingReceipt.qrCodeData
+                    merchantName = existingReceipt!!.merchantName,
+                    date = existingReceipt!!.date,
+                    totalAmount = existingReceipt!!.totalAmount,
+                    qrCodeData = existingReceipt!!.qrCodeData
                 )
                 
                 // Load EPS data if available
-                _epsData.value = repository.getEpsDataForReceipt(existingReceipt.id)
+                _epsData.value = repository.getEpsDataForReceipt(existingReceipt!!.id)
             } else {
                 // 1. Extract QR code logic
                 // Check if we have passed QR data from camera (Scan & Go)
@@ -177,8 +185,30 @@ class ReviewReceiptViewModel @Inject constructor(
                 }
 
                 if (fiscalParsed != null) {
+                    // Convert fiscal data if needed
+                    val currentCurrency = _currency.value
+                    val rate = _conversionRate.value
+                    
+                    val converted = if (currentCurrency == "EUR" && fiscalParsed!!.currency == "RSD") {
+                        fiscalParsed!!.copy(
+                            totalAmount = fiscalParsed!!.totalAmount?.divide(rate, 2, java.math.RoundingMode.HALF_UP),
+                            currentMonthAmount = fiscalParsed!!.currentMonthAmount?.divide(rate, 2, java.math.RoundingMode.HALF_UP),
+                            previousDebtAmount = fiscalParsed!!.previousDebtAmount?.divide(rate, 2, java.math.RoundingMode.HALF_UP),
+                            currency = "EUR"
+                        )
+                    } else if (currentCurrency == "RSD" && fiscalParsed!!.currency == "EUR") {
+                        fiscalParsed!!.copy(
+                            totalAmount = fiscalParsed!!.totalAmount?.multiply(rate),
+                            currentMonthAmount = fiscalParsed!!.currentMonthAmount?.multiply(rate),
+                            previousDebtAmount = fiscalParsed!!.previousDebtAmount?.multiply(rate),
+                            currency = "RSD"
+                        )
+                    } else {
+                        fiscalParsed
+                    }
+
                     // Use fiscal data directly - 100% accurate
-                    _parsedReceipt.value = fiscalParsed
+                    _parsedReceipt.value = converted
                     _suggestedSection.value = "Shopping" // Usually store bills
                 } else {
                     // 3. Gemini Disabled by User Request
@@ -204,17 +234,39 @@ class ReviewReceiptViewModel @Inject constructor(
                         }
                     }
                     
-                    if (geminiParsed != null) {
+                    val finalParsed = if (geminiParsed != null) {
                         android.util.Log.d("ReviewVM", "✅ Gemini parsing success! Using AI result.")
                         _rawText.value += "\n\n✅ GEMINI PARSING SUCCESS!\nMerchant: ${geminiParsed.merchantName}\nName: ${geminiParsed.recipientName}"
-                        _parsedReceipt.value = geminiParsed.copy(qrCodeData = qrCodeData)
-                        // If Gemini found it, highly likely it's a bill
-                        _suggestedSection.value = "Bills" 
+                        geminiParsed.copy(qrCodeData = qrCodeData)
                     } else {
                          android.util.Log.d("ReviewVM", "⚠️ Gemini failed or skipped. Using legacy Regex parser.")
-                        _parsedReceipt.value = legacyParsed.copy(qrCodeData = qrCodeData)
-                        _suggestedSection.value = AutoTagger.suggestSection(text)
+                        legacyParsed.copy(qrCodeData = qrCodeData)
                     }
+
+                    // Convert to current currency
+                    val currentCurrency = _currency.value
+                    val rate = _conversionRate.value
+                    
+                    val converted = if (currentCurrency == "EUR" && finalParsed!!.currency == "RSD") {
+                        finalParsed!!.copy(
+                            totalAmount = finalParsed!!.totalAmount?.divide(rate, 2, java.math.RoundingMode.HALF_UP),
+                            currentMonthAmount = finalParsed!!.currentMonthAmount?.divide(rate, 2, java.math.RoundingMode.HALF_UP),
+                            previousDebtAmount = finalParsed!!.previousDebtAmount?.divide(rate, 2, java.math.RoundingMode.HALF_UP),
+                            currency = "EUR"
+                        )
+                    } else if (currentCurrency == "RSD" && finalParsed!!.currency == "EUR") {
+                        finalParsed!!.copy(
+                            totalAmount = finalParsed!!.totalAmount?.multiply(rate),
+                            currentMonthAmount = finalParsed!!.currentMonthAmount?.multiply(rate),
+                            previousDebtAmount = finalParsed!!.previousDebtAmount?.multiply(rate),
+                            currency = "RSD"
+                        )
+                    } else {
+                        finalParsed
+                    }
+
+                    _parsedReceipt.value = converted
+                    _suggestedSection.value = if (geminiParsed != null) "Bills" else AutoTagger.suggestSection(text)
                     
                     // Check for EPS data (Consumption graphs) - relies on raw text for now
                     var eps = EpsParser.parse(text)
@@ -284,10 +336,26 @@ class ReviewReceiptViewModel @Inject constructor(
                 // Parse Serbian number format (1.234,56)
                 val format = java.text.NumberFormat.getInstance(java.util.Locale("sr", "RS"))
                 val number = format.parse(total)
-                BigDecimal(number.toString())
+                var parsedAmount = BigDecimal(number.toString())
+                
+                // If UI is in EUR, we need to convert BACK to RSD for storage (single source of truth)
+                val currentCurrency = _currency.value
+                val rate = _conversionRate.value
+                if (currentCurrency == "EUR") {
+                    parsedAmount = parsedAmount.multiply(rate).setScale(2, java.math.RoundingMode.HALF_UP)
+                }
+                parsedAmount
             } catch (e: Exception) {
                 // Fallback to standard parsing if it fails (e.g. user entered 1234.56)
-                try { BigDecimal(total) } catch (e2: Exception) { BigDecimal.ZERO }
+                try { 
+                    var parsedAmount = BigDecimal(total) 
+                    val currentCurrency = _currency.value
+                    val rate = _conversionRate.value
+                    if (currentCurrency == "EUR") {
+                        parsedAmount = parsedAmount.multiply(rate).setScale(2, java.math.RoundingMode.HALF_UP)
+                    }
+                    parsedAmount
+                } catch (e2: Exception) { BigDecimal.ZERO }
             }
             
             val date = try {

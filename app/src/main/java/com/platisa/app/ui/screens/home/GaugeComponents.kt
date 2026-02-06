@@ -270,22 +270,19 @@ fun AccountBalanceGauge(
         val arcSize = Size(innerRadius * 2, innerRadius * 2)
         val strokeWidth = outerRadius - innerRadius
 
-        // 1. Drop Shadow (Ambient) using native canvas for better blur
-        drawIntoCanvas {
-            val paint = Paint().apply {
-                color = android.graphics.Color.BLACK
-                maskFilter = android.graphics.BlurMaskFilter(15f, android.graphics.BlurMaskFilter.Blur.NORMAL)
-                alpha = if (isDark) 100 else 40
-            }
-            it.nativeCanvas.drawArc(
-                android.graphics.RectF(
-                    arcTopLeft.x, arcTopLeft.y,
-                    arcTopLeft.x + arcSize.width, arcTopLeft.y + arcSize.height
-                ),
-                180f + offsetAngle,
-                fullSweep,
-                false,
-                paint
+        // 1. Drop Shadow (Ambient) - Optimized: concentric arcs instead of BlurMaskFilter
+        val shadowSteps = 3
+        val shadowStartAlpha = if (isDark) 0.3f else 0.15f
+        for (i in 1..shadowSteps) {
+            val offset = i.toFloat() * 2f
+            drawArc(
+                color = Color.Black.copy(alpha = shadowStartAlpha / i),
+                startAngle = 180f + offsetAngle,
+                sweepAngle = fullSweep,
+                useCenter = false,
+                topLeft = Offset(arcTopLeft.x + offset, arcTopLeft.y + offset),
+                size = arcSize,
+                style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
             )
         }
 

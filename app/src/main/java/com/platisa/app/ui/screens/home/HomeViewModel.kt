@@ -180,18 +180,33 @@ class HomeViewModel @Inject constructor(
     private val _avatarPath = MutableStateFlow(secureStorage.getAvatarPath())
     val avatarPath: StateFlow<String?> = _avatarPath.asStateFlow()
 
+    private val _cameraAvatarPath = MutableStateFlow<String?>(null)
+    val cameraAvatarPath: StateFlow<String?> = _cameraAvatarPath.asStateFlow()
+
     private val _celebrationImagePath = MutableStateFlow(secureStorage.getCelebrationImagePath())
     val celebrationImagePath: StateFlow<String?> = _celebrationImagePath.asStateFlow()
+
+    private val _avatarUpdateVersion = MutableStateFlow(preferenceManager.avatarUpdateVersion)
+    val avatarUpdateVersion: StateFlow<Long> = _avatarUpdateVersion.asStateFlow()
 
 
 
     init {
         checkConnectedAccount()
         fetchLiveRate()
+        checkCameraAvatar()
         
         // Start Real-time Sync for Shared Bills
         viewModelScope.launch {
             repository.startRealTimeSync()
+        }
+    }
+
+    private fun checkCameraAvatar() {
+        val avatarsDir = java.io.File(context.filesDir, "avatars")
+        val cameraFile = java.io.File(avatarsDir, "avatar_camera_latest.jpg")
+        if (cameraFile.exists()) {
+            _cameraAvatarPath.value = cameraFile.absolutePath
         }
     }
 
@@ -275,6 +290,8 @@ class HomeViewModel @Inject constructor(
         _avatarPath.value = secureStorage.getAvatarPath()
         _celebrationImagePath.value = secureStorage.getCelebrationImagePath()
         _currency.value = secureStorage.getCurrency()
+        _avatarUpdateVersion.value = preferenceManager.avatarUpdateVersion
+        checkCameraAvatar()
         // Check rate on profile refresh too if needed, or just let init handle it
     }
 

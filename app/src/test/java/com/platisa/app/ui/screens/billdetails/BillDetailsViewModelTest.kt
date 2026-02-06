@@ -43,6 +43,8 @@ class BillDetailsViewModelTest {
     private lateinit var viewModel: BillDetailsViewModel
     private val receiptRepository: ReceiptRepository = mockk(relaxed = true)
     private val epsDataRepository: EpsDataRepository = mockk(relaxed = true)
+    private val secureStorage: com.platisa.app.core.domain.SecureStorage = mockk(relaxed = true)
+    private val preferenceManager: com.platisa.app.core.data.preferences.PreferenceManager = mockk(relaxed = true)
     private val vibrationHelper: VibrationHelper = mockk(relaxed = true)
     private val context: Context = mockk(relaxed = true)
     private val alarmManager: AlarmManager = mockk(relaxed = true)
@@ -61,10 +63,15 @@ class BillDetailsViewModelTest {
         every { context.getSystemService(Context.ALARM_SERVICE) } returns alarmManager
         every { context.getApplicationContext() } returns context
         
+        // Mock PreferenceManager defaults
+        every { preferenceManager.lastKnownEuroRate } returns 117.0f
+        
         viewModel = BillDetailsViewModel(
             context,
             receiptRepository,
             epsDataRepository,
+            secureStorage,
+            preferenceManager,
             vibrationHelper
         )
     }

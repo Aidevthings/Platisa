@@ -20,9 +20,33 @@ class PlatisaApplication : Application(), Configuration.Provider {
     override fun onCreate() {
         super.onCreate()
         
-
-        
         Timber.plant(Timber.DebugTree())
+
+        // Check GMS availability
+        try {
+            val gmsApi = com.google.android.gms.common.GoogleApiAvailability.getInstance()
+            val resultCode = gmsApi.isGooglePlayServicesAvailable(this)
+            Timber.d("GMS Availability Result: $resultCode (0 = SUCCESS)")
+            
+            if (resultCode == com.google.android.gms.common.ConnectionResult.SUCCESS) {
+                // Try to initialize ProviderInstaller to ensure modern TLS support
+                com.google.android.gms.security.ProviderInstaller.installIfNeededAsync(this, 
+                    object : com.google.android.gms.security.ProviderInstaller.ProviderInstallListener {
+                        override fun onProviderInstalled() {
+                            Timber.i("Security Provider installed successfully")
+                        }
+
+                        override fun onProviderInstallFailed(errorCode: Int, recoveryIntent: android.content.Intent?) {
+                            Timber.w("Security Provider installation failed: $errorCode. This is expected on some emulators.")
+                        }
+                    }
+                )
+            } else {
+                Timber.w("GMS not fully available (Result code: $resultCode)")
+            }
+        } catch (e: Exception) {
+            Timber.e(e, "Exception during GMS availability check")
+        }
         
         // Initialize PDFBox on background thread to not block startup
         GlobalScope.launch(Dispatchers.IO) {
@@ -32,6 +56,9 @@ class PlatisaApplication : Application(), Configuration.Provider {
         // Schedule automatic STORNO cleanup
         StornoCleanupScheduler.schedule(this)
         Timber.d("STORNO cleanup scheduled")
+
+        // Schedule Gmail Sync
+        scheduleSync()
     }
     
     override val workManagerConfiguration: Configuration

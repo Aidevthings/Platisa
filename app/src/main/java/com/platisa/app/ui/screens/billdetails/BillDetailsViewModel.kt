@@ -19,12 +19,20 @@ class BillDetailsViewModel @Inject constructor(
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context,
     private val receiptRepository: ReceiptRepository,
     private val epsDataRepository: EpsDataRepository,
+    private val secureStorage: com.platisa.app.core.domain.SecureStorage,
+    private val preferenceManager: com.platisa.app.core.data.preferences.PreferenceManager,
     private val vibrationHelper: com.platisa.app.core.common.VibrationHelper
 ) : ViewModel() {
 
     fun vibrate(type: com.platisa.app.core.common.VibrationHelper.HapticType) {
         vibrationHelper.vibrate(type)
     }
+
+    private val _currency = MutableStateFlow(secureStorage.getCurrency())
+    val currency: StateFlow<String> = _currency.asStateFlow()
+
+    private val _conversionRate = MutableStateFlow(java.math.BigDecimal(preferenceManager.lastKnownEuroRate.toDouble()))
+    val conversionRate: StateFlow<java.math.BigDecimal> = _conversionRate.asStateFlow()
     
     fun scheduleDiscountReminder(receiptId: Long, deadlines: List<String>) {
         viewModelScope.launch {
@@ -165,6 +173,10 @@ class BillDetailsViewModel @Inject constructor(
     fun loadBillDetails(billId: String) {
         viewModelScope.launch {
             try {
+                // Refresh settings
+                _currency.value = secureStorage.getCurrency()
+                _conversionRate.value = java.math.BigDecimal(preferenceManager.lastKnownEuroRate.toDouble())
+
                 val receiptId = billId.toLongOrNull()
                 if (receiptId == null) {
                     _billDetails.value = BillDetailsState.Error("Invalid bill ID")
@@ -172,8 +184,30 @@ class BillDetailsViewModel @Inject constructor(
                 }
 
                 // Load receipt
-                val receipt = receiptRepository.getReceiptById(receiptId)
-                if (receipt != null) {
+                val originalReceipt = receiptRepository.getReceiptById(receiptId)
+                if (originalReceipt != null) {
+                    val currentCurrency = _currency.value
+                    val rate = _conversionRate.value
+                    
+                    // Convert Receipt data if needed
+                    val receipt = if (currentCurrency == "EUR" && originalReceipt.currency == "RSD") {
+                        originalReceipt.copy(
+                            totalAmount = originalReceipt.totalAmount.divide(rate, 2, java.math.RoundingMode.HALF_UP),
+                            currentMonthAmount = originalReceipt.currentMonthAmount?.divide(rate, 2, java.math.RoundingMode.HALF_UP),
+                            previousDebtAmount = originalReceipt.previousDebtAmount?.divide(rate, 2, java.math.RoundingMode.HALF_UP),
+                            currency = "EUR"
+                        )
+                    } else if (currentCurrency == "RSD" && originalReceipt.currency == "EUR") {
+                        originalReceipt.copy(
+                            totalAmount = originalReceipt.totalAmount.multiply(rate),
+                            currentMonthAmount = originalReceipt.currentMonthAmount?.multiply(rate),
+                            previousDebtAmount = originalReceipt.previousDebtAmount?.multiply(rate),
+                            currency = "RSD"
+                        )
+                    } else {
+                        originalReceipt
+                    }
+
                     val isLatest = receiptRepository.isLatestReceipt(receipt.merchantName, receipt.date)
                     
                     // 1. Get EPS data if it exists (Optional)
@@ -206,22 +240,37 @@ class BillDetailsViewModel @Inject constructor(
 
                         if (billDebt > 0.01) { // Ignore rounding errors
                              // Calculate what we ALREADY paid locally
-                             paidPastBillsSum = receiptRepository.getPaidPastBillsSum(receipt.merchantName, receipt.date.time)
+                             val rawPaidSum = receiptRepository.getPaidPastBillsSum(receipt.merchantName, receipt.date.time)
                              
-                             localUnpaidSum = receiptRepository.getUnpaidPastBillsSum(receipt.merchantName, receipt.date.time)
+                             // Convert local sums to current currency if needed
+                             paidPastBillsSum = if (currentCurrency == "EUR" && originalReceipt.currency == "RSD") {
+                                 rawPaidSum / rate.toDouble()
+                             } else if (currentCurrency == "RSD" && originalReceipt.currency == "EUR") {
+                                 rawPaidSum * rate.toDouble()
+                             } else {
+                                 rawPaidSum
+                             }
+                             
+                             val rawLocalUnpaid = receiptRepository.getUnpaidPastBillsSum(receipt.merchantName, receipt.date.time)
+                             localUnpaidSum = if (currentCurrency == "EUR" && originalReceipt.currency == "RSD") {
+                                 rawLocalUnpaid / rate.toDouble()
+                             } else if (currentCurrency == "RSD" && originalReceipt.currency == "EUR") {
+                                 rawLocalUnpaid * rate.toDouble()
+                             } else {
+                                 rawLocalUnpaid
+                             }
+
                              val hasAnyPastBills = receiptRepository.hasAnyPastBills(receipt.merchantName, receipt.date.time)
                              
                              // SMART ELASTICITY logic:
-                             val tolerance = Math.max(billDebt * 0.1, 100.0)
+                             // Tolerance adjusted for currency
+                             val tolerance = if (currentCurrency == "EUR") 1.0 else 100.0
                              val diff = Math.abs(localUnpaidSum - billDebt)
                              
                              if (hasAnyPastBills && diff > tolerance) {
                                  isDebtPartiallyPaid = true
                                  
                                  // SMART CALCULATION: (Current + Previous) - Locally Paid Past Bills
-                                 
-                                 // We use billDebt (which is confirmed Previous Debt) + Current Amount as the TRUE total
-                                 // We ignore receipt.totalAmount here because it might just be the scan value of the slip (often just current month)
                                  val currentDouble = receipt.currentMonthAmount?.toDouble() ?: 0.0
                                  val truePaperTotal = currentDouble + billDebt
                                  
@@ -235,15 +284,25 @@ class BillDetailsViewModel @Inject constructor(
                     // Lazy calculate discounts for LATEST bill only
                     // This satisfies the requirement: "We don't scan anything else but the latest bill only"
                     val electricityBaseCost = parseBaseCostFromMetadata(receipt.metadata)
+                    
+                    // Convert electricity base cost for discount table
+                    val convertedBaseCost = if (electricityBaseCost != null) {
+                        if (currentCurrency == "EUR" && originalReceipt.currency == "RSD") {
+                            electricityBaseCost.divide(rate, 2, java.math.RoundingMode.HALF_UP)
+                        } else if (currentCurrency == "RSD" && originalReceipt.currency == "EUR") {
+                            electricityBaseCost.multiply(rate)
+                        } else electricityBaseCost
+                    } else null
+
                     val discountDeadline = parseDeadlineFromMetadata(receipt.metadata)
                     val discountThreshold = parseDiscountThresholdFromMetadata(receipt.metadata)
                     val infostanDeadline = parseInfostanDeadlineFromMetadata(receipt.metadata)
                     
                     // Use electricity base cost (Page 2) if available, otherwise fallback to total current month (Page 1)
-                    val baseForDiscount = electricityBaseCost ?: receipt.currentMonthAmount
+                    val baseForDiscount = convertedBaseCost ?: receipt.currentMonthAmount
                     
                     val discountTable = if (isLatest && baseForDiscount != null) {
-                        calculateDiscountTable(baseForDiscount, receipt.date)
+                        calculateDiscountTable(baseForDiscount, receipt.date, currentCurrency)
                     } else {
                         null 
                     }
@@ -257,6 +316,7 @@ class BillDetailsViewModel @Inject constructor(
                         vtConsumption = epsData?.consumptionVt?.toInt() ?: 0,
                         ntConsumption = epsData?.consumptionNt?.toInt() ?: 0,
                         billType = determineBillType(receipt),
+                        currency = currentCurrency,
                         isLatestForMerchant = isLatest,
                         isDebtPartiallyPaid = isDebtPartiallyPaid,
                         localUnpaidSum = localUnpaidSum,
@@ -480,7 +540,7 @@ class BillDetailsViewModel @Inject constructor(
         return match?.groupValues?.get(1)
     }
 
-    private fun calculateDiscountTable(baseCost: java.math.BigDecimal, billDate: java.util.Date): List<DiscountRow> {
+    private fun calculateDiscountTable(baseCost: java.math.BigDecimal, billDate: java.util.Date, currency: String): List<DiscountRow> {
         val discountRows = mutableListOf<DiscountRow>()
         val calendar = java.util.Calendar.getInstance()
         calendar.time = billDate
@@ -492,7 +552,7 @@ class BillDetailsViewModel @Inject constructor(
         val discountPercentages = listOf(5, 6, 7)
         for (pct in discountPercentages) {
             val discountAmount = baseCost.multiply(java.math.BigDecimal(pct)).divide(java.math.BigDecimal(100), 2, java.math.RoundingMode.HALF_UP)
-            val formattedAmount = String.format("%,.2f", discountAmount).replace(",", "X").replace(".", ",").replace("X", ".")
+            val formattedAmount = com.platisa.app.core.common.Formatters.formatCurrencyWithSuffix(discountAmount, currency)
 
             val pctKey = "$pct%"
             
@@ -517,6 +577,7 @@ sealed class BillDetailsState {
         val vtConsumption: Int,
         val ntConsumption: Int,
         val billType: BillType,
+        val currency: String,
         val isLatestForMerchant: Boolean = true,
         val isDebtPartiallyPaid: Boolean = false,
         val localUnpaidSum: Double = 0.0,

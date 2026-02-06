@@ -124,5 +124,10 @@ class PreferenceManager @Inject constructor(
     var lastRateFetchTime: Long
         get() = prefs.getLong("last_rate_fetch_time", 0)
         set(value) = prefs.edit().putLong("last_rate_fetch_time", value).apply()
+
+    // Avatar versioning for cache breaking
+    var avatarUpdateVersion: Long
+        get() = prefs.getLong("avatar_update_version", 0L)
+        set(value) = prefs.edit().putLong("avatar_update_version", value).apply()
 }
 

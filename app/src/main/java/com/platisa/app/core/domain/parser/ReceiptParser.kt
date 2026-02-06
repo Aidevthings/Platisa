@@ -21,7 +21,8 @@ data class ParsedReceipt(
     val payerAddress: String? = null,
     val discountDeadline: String? = null,
     val currentMonthAmount: java.math.BigDecimal? = null,
-    val previousDebtAmount: java.math.BigDecimal? = null
+    val previousDebtAmount: java.math.BigDecimal? = null,
+    val currency: String = "RSD"
 )
 
 object ReceiptParser {

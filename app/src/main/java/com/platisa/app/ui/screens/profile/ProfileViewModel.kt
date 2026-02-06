@@ -47,8 +47,17 @@ class ProfileViewModel @Inject constructor(
     private val _splashScreenStyle = MutableStateFlow(preferenceManager.splashScreenStyle)
     val splashScreenStyle = _splashScreenStyle.asStateFlow()
 
+    private val _avatarUpdateVersion = MutableStateFlow(preferenceManager.avatarUpdateVersion)
+    val avatarUpdateVersion = _avatarUpdateVersion.asStateFlow()
+
     init {
         checkCameraAvatar()
+    }
+
+    private fun incrementAvatarVersion() {
+        val newVersion = System.currentTimeMillis()
+        preferenceManager.avatarUpdateVersion = newVersion
+        _avatarUpdateVersion.value = newVersion
     }
 
     private fun checkCameraAvatar() {
@@ -91,6 +100,7 @@ class ProfileViewModel @Inject constructor(
         viewModelScope.launch {
             secureStorage.setAvatarPath("predefined:$avatarName")
             _avatarPath.value = "predefined:$avatarName"
+            incrementAvatarVersion()
             vibrationHelper.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
         }
     }
@@ -107,18 +117,29 @@ class ProfileViewModel @Inject constructor(
                 val fileName = if (isCamera) "avatar_camera_latest.jpg" else "avatar_${System.currentTimeMillis()}.jpg"
                 val destFile = File(avatarsDir, fileName)
                 
-                context.contentResolver.openInputStream(uri)?.use { input ->
-                    FileOutputStream(destFile).use { output ->
-                        input.copyTo(output)
+                // If URI is already pointing to our destination file, don't copy (avoids re-writing same file)
+                val isSameFile = uri.scheme == "file" && uri.path == destFile.absolutePath
+                val isProviderUri = uri.toString().contains(".provider") && isCamera
+                
+                if (!isSameFile && !isProviderUri) {
+                    context.contentResolver.openInputStream(uri)?.use { input ->
+                        FileOutputStream(destFile).use { output ->
+                            input.copyTo(output)
+                        }
                     }
                 }
                 
                 val path = if (isCamera) "camera:${destFile.absolutePath}" else "custom:${destFile.absolutePath}"
                 secureStorage.setAvatarPath(path)
-                _avatarPath.value = path
+                
+                // Update paths first
                 if (isCamera) {
                     _cameraAvatarPath.value = destFile.absolutePath
                 }
+                _avatarPath.value = path
+                
+                // THEN increment version to trigger UI refresh
+                incrementAvatarVersion()
                 vibrationHelper.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.SUCCESS)
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -133,6 +154,7 @@ class ProfileViewModel @Inject constructor(
                 val fullPath = "camera:$path"
                 secureStorage.setAvatarPath(fullPath)
                 _avatarPath.value = fullPath
+                incrementAvatarVersion()
                 vibrationHelper.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
             }
         }
