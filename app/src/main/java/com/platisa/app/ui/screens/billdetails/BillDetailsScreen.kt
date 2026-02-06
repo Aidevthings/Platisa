@@ -244,10 +244,17 @@ fun BillDetailsContent(
         }
     }
     
-    val displayAmount = if (showTotalDebtOption && selectedOption == PaymentOption.TOTAL_DEBT) {
+    var displayAmount = if (showTotalDebtOption && selectedOption == PaymentOption.TOTAL_DEBT) {
         totalDebtAmount
     } else {
         currentAmount
+    }
+
+    // FALLBACK: If displayAmount is essentially zero, but totalAmount exists, use that.
+    // This fixed the "0.00" bug where previousDebt was found but currentMonth was nil.
+    if (displayAmount <= BigDecimal.ZERO && (receipt.totalAmount ?: BigDecimal.ZERO) > BigDecimal.ZERO) {
+        android.util.Log.d("BillDetails", "Fallback: displayAmount was $displayAmount, using totalAmount ${receipt.totalAmount}")
+        displayAmount = receipt.totalAmount ?: BigDecimal.ZERO
     }
 
     // Patch QR Code if needed - ALWAYS patch for Smart Debt to ensure correct amount

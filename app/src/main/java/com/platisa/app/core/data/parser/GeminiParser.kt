@@ -44,6 +44,8 @@ object GeminiParser {
                     - due_date (string): Payment deadline in DD.MM.YYYY format.
                     - recipient_name (string): Name of the payer/customer (often under "Kupac", "Primalac", "Korisnik"). Use the actual name, NOT labels like "Broj", "Šifra", "ED", "Naplatni".
                     - recipient_address (string): Address of the payer/customer (Street, number, city, zip).
+                    - current_month_amount (number): Amount for the current billing period/month (e.g., "Zaduženje za tekući period").
+                    - previous_debt_amount (number): Any outstanding debt from previous periods (e.g., "Prethodni dug", "Dug iz prethodnog perioda").
                     
                     Return ONLY the JSON object. Do not include markdown formatting like ```json ... ```.
                 """.trimIndent()
@@ -79,6 +81,8 @@ object GeminiParser {
         val amount = json.optDouble("total_amount", 0.0)
         var invoiceNumber = json.optString("invoice_number").takeIf { it.isNotEmpty() }
         
+        val currentMonthAmount = json.optDouble("current_month_amount", 0.0)
+        val previousDebtAmount = json.optDouble("previous_debt_amount", 0.0)
 
         val dueDateStr = json.optString("due_date")
         val recipientName = json.optString("recipient_name").takeIf { it.isNotEmpty() }
@@ -103,7 +107,9 @@ object GeminiParser {
             recipientName = merchantName, // Merchant is the recipient of payment
             recipientAddress = null, // Merchant address (not always available)
             payerName = recipientName, // "Recipient" on bill is the Payer (User)
-            payerAddress = recipientAddress // "Recipient Address" on bill is Payer Address
+            payerAddress = recipientAddress, // "Recipient Address" on bill is Payer Address
+            currentMonthAmount = if (currentMonthAmount > 0) BigDecimal.valueOf(currentMonthAmount) else null,
+            previousDebtAmount = if (previousDebtAmount > 0) BigDecimal.valueOf(previousDebtAmount) else null
         )
     }
 }

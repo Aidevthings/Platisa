@@ -343,6 +343,15 @@ class ReviewReceiptViewModel @Inject constructor(
                         recipientAddress = parsed?.recipientAddress ?: eps?.recipientAddress ?: it.recipientAddress,
                         payerName = parsed?.payerName ?: it.payerName,
                         payerAddress = parsed?.payerAddress ?: it.payerAddress,
+                        currentMonthAmount = parsed?.currentMonthAmount ?: run {
+                            val debt = parsed?.previousDebtAmount ?: BigDecimal.ZERO
+                            if (debt > BigDecimal.ZERO && amount > debt) {
+                                amount.subtract(debt)
+                            } else {
+                                if (parsed?.previousDebtAmount == null) amount else null
+                            }
+                        },
+                        previousDebtAmount = parsed?.previousDebtAmount,
                         metadata = finalMetadata
                     )
                     repository.updateReceipt(updatedReceipt)
@@ -364,6 +373,15 @@ class ReviewReceiptViewModel @Inject constructor(
                     recipientAddress = parsed?.recipientAddress ?: eps?.recipientAddress,
                     payerName = parsed?.payerName,
                     payerAddress = parsed?.payerAddress,
+                    currentMonthAmount = parsed?.currentMonthAmount ?: run {
+                        val debt = parsed?.previousDebtAmount ?: BigDecimal.ZERO
+                        if (debt > BigDecimal.ZERO && amount > debt) {
+                            amount.subtract(debt)
+                        } else {
+                            if (parsed?.previousDebtAmount == null) amount else null
+                        }
+                    },
+                    previousDebtAmount = parsed?.previousDebtAmount,
                     metadata = metadataWithDiscount
                 )
                 val receiptId = repository.insertReceipt(receipt, eps?.billingPeriod)

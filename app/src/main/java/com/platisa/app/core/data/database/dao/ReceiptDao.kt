@@ -45,6 +45,9 @@ interface ReceiptDao {
     suspend fun getReceiptsByInvoiceNumber(invoiceNumber: String): List<ReceiptEntity>
     
     // Get ALL receipts with same Naplatni Number (for duplicate detection - Tier 2)
+    @Query("SELECT * FROM receipts WHERE naplatniNumber = :naplatniNumber AND (paymentId LIKE '%' || :period || '%' OR metadata LIKE '%' || :period || '%')")
+    suspend fun getReceiptsByNaplatniAndPeriod(naplatniNumber: String, period: String): List<ReceiptEntity>
+
     @Query("SELECT * FROM receipts WHERE naplatniNumber = :naplatniNumber ORDER BY createdAt ASC")
     suspend fun getReceiptsByNaplatniNumber(naplatniNumber: String): List<ReceiptEntity>
     
@@ -83,6 +86,9 @@ interface ReceiptDao {
 
     @Update
     suspend fun updateReceipt(receipt: ReceiptEntity)
+
+    @Update
+    suspend fun updateReceipts(receipts: List<ReceiptEntity>)
 
     @Delete
     suspend fun deleteReceipt(receipt: ReceiptEntity)

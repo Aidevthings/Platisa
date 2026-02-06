@@ -38,11 +38,26 @@ class ProfileViewModel @Inject constructor(
     private val _avatarPath = MutableStateFlow(secureStorage.getAvatarPath())
     val avatarPath = _avatarPath.asStateFlow()
 
+    private val _cameraAvatarPath = MutableStateFlow<String?>(null)
+    val cameraAvatarPath = _cameraAvatarPath.asStateFlow()
+
     private val _celebrationImagePath = MutableStateFlow(secureStorage.getCelebrationImagePath())
     val celebrationImagePath = _celebrationImagePath.asStateFlow()
 
     private val _splashScreenStyle = MutableStateFlow(preferenceManager.splashScreenStyle)
     val splashScreenStyle = _splashScreenStyle.asStateFlow()
+
+    init {
+        checkCameraAvatar()
+    }
+
+    private fun checkCameraAvatar() {
+        val avatarsDir = File(context.filesDir, "avatars")
+        val cameraFile = File(avatarsDir, "avatar_camera_latest.jpg")
+        if (cameraFile.exists()) {
+            _cameraAvatarPath.value = cameraFile.absolutePath
+        }
+    }
 
     // Predefined avatars (resource IDs as strings)
     val predefinedAvatars = listOf(
@@ -80,7 +95,7 @@ class ProfileViewModel @Inject constructor(
         }
     }
 
-    fun setAvatarFromUri(uri: Uri) {
+    fun setAvatarFromUri(uri: Uri, isCamera: Boolean = false) {
         viewModelScope.launch {
             try {
                 // Copy image to internal storage
@@ -89,7 +104,7 @@ class ProfileViewModel @Inject constructor(
                     avatarsDir.mkdirs()
                 }
                 
-                val fileName = "avatar_${System.currentTimeMillis()}.jpg"
+                val fileName = if (isCamera) "avatar_camera_latest.jpg" else "avatar_${System.currentTimeMillis()}.jpg"
                 val destFile = File(avatarsDir, fileName)
                 
                 context.contentResolver.openInputStream(uri)?.use { input ->
@@ -98,12 +113,27 @@ class ProfileViewModel @Inject constructor(
                     }
                 }
                 
-                val path = "custom:${destFile.absolutePath}"
+                val path = if (isCamera) "camera:${destFile.absolutePath}" else "custom:${destFile.absolutePath}"
                 secureStorage.setAvatarPath(path)
                 _avatarPath.value = path
+                if (isCamera) {
+                    _cameraAvatarPath.value = destFile.absolutePath
+                }
                 vibrationHelper.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.SUCCESS)
             } catch (e: Exception) {
                 e.printStackTrace()
+            }
+        }
+    }
+
+    fun setAvatarFromCameraSlot() {
+        val path = _cameraAvatarPath.value
+        if (path != null) {
+            viewModelScope.launch {
+                val fullPath = "camera:$path"
+                secureStorage.setAvatarPath(fullPath)
+                _avatarPath.value = fullPath
+                vibrationHelper.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
             }
         }
     }

@@ -19,7 +19,9 @@ data class ParsedReceipt(
     val recipientAddress: String? = null,
     val payerName: String? = null,
     val payerAddress: String? = null,
-    val discountDeadline: String? = null
+    val discountDeadline: String? = null,
+    val currentMonthAmount: java.math.BigDecimal? = null,
+    val previousDebtAmount: java.math.BigDecimal? = null
 )
 
 object ReceiptParser {
@@ -37,6 +39,8 @@ object ReceiptParser {
         val (name, addr) = extractRecipientInfo(text, merchant)
         val items = extractItems(text)
         val discountDeadline = extractDiscountDeadline(text)
+        val currentMonthAmount = extractCurrentMonthAmount(text)
+        val previousDebtAmount = extractPreviousDebtAmount(text)
         
         return ParsedReceipt(
             merchantName = merchant, 
@@ -50,7 +54,9 @@ object ReceiptParser {
             recipientAddress = addr,
             payerName = name,
             payerAddress = addr,
-            discountDeadline = discountDeadline
+            discountDeadline = discountDeadline,
+            currentMonthAmount = currentMonthAmount,
+            previousDebtAmount = previousDebtAmount
         )
     }
 
@@ -1116,6 +1122,41 @@ object ReceiptParser {
             android.util.Log.d("ReceiptParser", "🎯 Found DISCOUNT DEADLINE: $deadline")
         }
         return deadline
+    }
+
+    private fun extractCurrentMonthAmount(text: String): BigDecimal? {
+        val patterns = listOf(
+            Regex("(?:Zaduženje\\s+za\\s+tekući\\s+period|Tekuće\\s+zaduženje|Iznos\\s+računa|Zaduženje\\s+u\\s+ovom\\s+obračunu)[:\\s]+([\\d.,]+)", RegexOption.IGNORE_CASE),
+            Regex("(?:Zadu\u009eenje\\s+za\\s+teku\u0086i\\s+period)[:\\s]+([\\d.,]+)", RegexOption.IGNORE_CASE) // OCR artifacts
+        )
+        
+        for (regex in patterns) {
+            val match = regex.find(text)
+            if (match != null) {
+                val amountStr = match.groupValues[1]
+                val amount = parseAmount(amountStr)
+                if (amount != null && amount > BigDecimal.ZERO) return amount
+            }
+        }
+        return null
+    }
+
+    private fun extractPreviousDebtAmount(text: String): BigDecimal? {
+        val patterns = listOf(
+            Regex("(?:Prethodni\\s+dug|Dug\\s+iz\\s+prethodnog\\s+perioda|Preostali\\s+dug|Dug\\s+na\\s+dan)[:\\s]+([\\d.,-]+)", RegexOption.IGNORE_CASE),
+            Regex("(?:Iznos\\s+duga)[:\\s]+([\\d.,-]+)", RegexOption.IGNORE_CASE)
+        )
+        
+        for (regex in patterns) {
+            val match = regex.find(text)
+            if (match != null) {
+                val amountStr = match.groupValues[1]
+                val amount = parseAmount(amountStr)
+                // Debt can be negative if overpaid
+                if (amount != null) return amount
+            }
+        }
+        return null
     }
 }
 

@@ -41,7 +41,7 @@ class ReceiptRepositoryImpl @Inject constructor(
         }
     }
     
-    fun getVisibleReceipts(): Flow<List<Receipt>> {
+    override fun getVisibleReceipts(): Flow<List<Receipt>> {
         return receiptDao.getVisibleReceipts().map { entities ->
             entities.map { it.toDomain() }
         }
@@ -90,7 +90,6 @@ class ReceiptRepositoryImpl @Inject constructor(
         // LOGOVANJE ZA DEBUG
         android.util.Log.d("ReceiptRepository", "=== UMETANJE RAČUNA ===")
         android.util.Log.d("ReceiptRepository", "Račun broj: ${entity.invoiceNumber}")
-        android.util.Log.d("ReceiptRepository", "Naplatni broj: ${entity.naplatniNumber}")
         android.util.Log.d("ReceiptRepository", "Payment ID: ${entity.paymentId}")
         android.util.Log.d("ReceiptRepository", "Billing Period: $billingPeriod") // Log
         android.util.Log.d("ReceiptRepository", "STORNO: ${entity.isStorno}")
@@ -149,6 +148,11 @@ class ReceiptRepositoryImpl @Inject constructor(
         
         val insertedId = receiptDao.insertReceipt(preparedEntity)
         android.util.Log.d("ReceiptRepository", "✅ Račun umetnut sa ID: $insertedId")
+        
+        // TRIGGER CONFLICT RESOLUTION (Housekeeping)
+        if (!preparedEntity.naplatniNumber.isNullOrEmpty() && !preparedEntity.paymentId.isNullOrEmpty()) {
+            duplicateDetector.resolveConflicts(preparedEntity)
+        }
         
         return insertedId
     }
@@ -436,12 +440,19 @@ class ReceiptRepositoryImpl @Inject constructor(
         // Pomoćna funkcija za bodovanje kompletnosti računa
         fun scoreReceipt(receipt: com.platisa.app.core.data.database.entity.ReceiptEntity): Int {
             var score = 0
-            if (receipt.paymentStatus == PaymentStatus.PAID) score += 100  // Uvek zadrži plaćene
-            if (!receipt.qrCodeData.isNullOrEmpty()) score += 10
-            if (!receipt.invoiceNumber.isNullOrEmpty()) score += 5
+            if (receipt.paymentStatus == PaymentStatus.PAID) score += 100
+            if (!receipt.qrCodeData.isNullOrEmpty()) score += 20
+            // Prioritize valid, long EPS invoice numbers
+            if (!receipt.invoiceNumber.isNullOrEmpty()) {
+                score += 10
+                if (receipt.invoiceNumber!!.length >= 8) score += 10
+            }
             if (!receipt.paymentId.isNullOrEmpty()) score += 5
-            if (!receipt.naplatniNumber.isNullOrEmpty()) score += 3
-            score += (receipt.id / 1000).toInt().coerceAtMost(10)  // Blaga prednost za novije
+            
+            // Correction bills are golden
+            if (receipt.metadata?.contains("IS_CORRECTION:true") == true) score += 50
+            
+            score += (receipt.id / 1000).toInt().coerceAtMost(10)  // Slight preference for newer scans
             return score
         }
 
@@ -474,16 +485,16 @@ class ReceiptRepositoryImpl @Inject constructor(
                 }
             }
 
-        // 3. Proveri Naplatni broj + Iznos duplikate (fallback za nedostajući PaymentId)
+        // 3. Proveri Račun broj + Iznos duplikate (fallback za nedostajući PaymentId)
         allReceipts.filter { 
-            !it.naplatniNumber.isNullOrEmpty() && 
+            !it.invoiceNumber.isNullOrEmpty() && 
             it.paymentId.isNullOrEmpty() && 
             !toDeleteIds.contains(it.id) 
         }
-        .groupBy { "${it.naplatniNumber}-${it.totalAmount}" }
+        .groupBy { "${it.invoiceNumber}-${it.totalAmount}" }
         .forEach { (key, duplicates) ->
             if (duplicates.size > 1) {
-                android.util.Log.d("ReceiptRepository", "Pronađeno ${duplicates.size} duplikata sa Naplatni+Iznos: $key")
+                android.util.Log.d("ReceiptRepository", "Pronađeno ${duplicates.size} duplikata sa Račun+Iznos: $key")
                 val sorted = duplicates.sortedByDescending { scoreReceipt(it) }
                 val toDelete = sorted.drop(1)
                 toDeleteIds.addAll(toDelete.map { it.id })

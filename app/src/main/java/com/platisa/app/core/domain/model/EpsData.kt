@@ -22,6 +22,7 @@ data class EpsData(
     // Monetary fields (Smart Parsing)
     val currentMonthAmount: BigDecimal? = null,
     val previousDebtAmount: BigDecimal? = null,
+    val totalPayAmount: BigDecimal? = null, // "ZA UPLATU" (Total to Pay)
     // Payment ID fields
     val naplatniBroj: String?,           // Naplatni broj (Account number)
     val invoiceNumber: String?,          // Racun broj (Invoice number)
@@ -43,19 +44,22 @@ data class EpsData(
 ) {
     companion object {
         /**
-         * Kreira Payment ID na osnovu naplatnog broja i perioda obracuna.
-         * Format: "naplatniBroj-YYYYMMDD-YYYYMMDD"
-         * Primer: "2004158536-20251005-20251101"
+         * Kreira Payment ID na osnovu broja računa, perioda i iznosa.
+         * NOVI LOGIKA: ID = InvoiceNumber + Period + Amount
+         * Naplatni broj se više NE KORISTI za generisanje ID-a jer je konstantan.
          */
-        fun createPaymentId(naplatniBroj: String?, periodStart: Date?, periodEnd: Date?): String? {
-            if (naplatniBroj == null || periodStart == null || periodEnd == null) {
+        fun createPaymentId(invoiceNumber: String?, periodStart: Date?, periodEnd: Date?, amount: BigDecimal?): String? {
+            // Ako fali bilo koji od ključnih podataka, ne možemo kreirati pouzdan ID
+            if (invoiceNumber == null || periodStart == null || periodEnd == null || amount == null) {
                 return null
             }
             
             val startDateStr = formatDateToYYYYMMDD(periodStart)
             val endDateStr = formatDateToYYYYMMDD(periodEnd)
+            // Format amount to ensure consistency (e.g. "20571.95")
+            val amountStr = amount.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString()
             
-            return "$naplatniBroj-$startDateStr-$endDateStr"
+            return "$invoiceNumber-$startDateStr-$endDateStr-$amountStr"
         }
         
         private fun formatDateToYYYYMMDD(date: Date): String {

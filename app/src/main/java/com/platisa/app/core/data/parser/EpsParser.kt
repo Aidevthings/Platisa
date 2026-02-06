@@ -28,10 +28,12 @@ object EpsParser {
         // Smart Parsing: Extract monetary values
         val currentAmount = extractCurrentMonthAmount(normalizedText)
         val previousDebt = extractPreviousDebt(normalizedText)
+        val totalPayAmount = extractTotalPayAmount(normalizedText)
         
         android.util.Log.d("EpsParser", "=== SMART PARSING RESULT ===")
         android.util.Log.d("EpsParser", "Current Month Amount: $currentAmount")
         android.util.Log.d("EpsParser", "Previous Debt: $previousDebt")
+        android.util.Log.d("EpsParser", "Total Pay Amount: $totalPayAmount")
         
         // Extract payment ID fields
         val naplatniBroj = extractNaplatniBroj(normalizedText)
@@ -51,10 +53,12 @@ object EpsParser {
 
         val isStorno = detectStorno(normalizedText)
         val isCorrection = detectCorrection(normalizedText)
+        if (isCorrection) {
+             android.util.Log.w("EpsParser", "🏁 BILL TYPE: KORIGOVAN (CORRECTED) - This will supersede other bills!")
+        }
         val dueDate = extractDueDate(normalizedText)
         
         android.util.Log.d("EpsParser", "=== IZVUČENI PODACI ZA DUPLIKAT DETEKCIJU ===")
-        android.util.Log.d("EpsParser", "Naplatni broj: $naplatniBroj")
         android.util.Log.d("EpsParser", "Račun broj: $invoiceNumber")
         android.util.Log.d("EpsParser", "STORNO: $isStorno")
         
@@ -80,17 +84,18 @@ object EpsParser {
         val finalDate = periodEnd ?: headerDate ?: dueDate
         android.util.Log.d("EpsParser", "Finalni datum za račun: $finalDate")
         
-        // KRITIČNO: Kreiraj PaymentId sa ispravnim datumima
-        val paymentId = EpsData.createPaymentId(naplatniBroj, periodStart, periodEnd ?: billingPeriodB?.second)
+        // KRITIČNO: Kreiraj PaymentId koristeći Račun broj (Invoice Number) + Period + Iznos
+        // Naplatni broj se više NE KORISTI za ID jer je statičan.
+        val paymentId = EpsData.createPaymentId(invoiceNumber, periodStart, periodEnd ?: billingPeriodB?.second, totalPayAmount)
         
         android.util.Log.d("EpsParser", "=== KREIRAN PAYMENT ID ===")
         android.util.Log.d("EpsParser", "PaymentId: $paymentId")
         
         if (paymentId == null) {
-            android.util.Log.w("EpsParser", "⚠️ PaymentId je NULL! Duplikat detekcija neće raditi po periodu!")
-            android.util.Log.w("EpsParser", "   - naplatniBroj: $naplatniBroj")
+            android.util.Log.w("EpsParser", "⚠️ PaymentId je NULL! Nedostaje InvoiceNumber, Period ili Amount!")
+            android.util.Log.w("EpsParser", "   - invoiceNumber: $invoiceNumber")
             android.util.Log.w("EpsParser", "   - periodStart: $periodStart")
-            android.util.Log.w("EpsParser", "   - periodEnd: $periodEnd")
+            android.util.Log.w("EpsParser", "   - amount: $totalPayAmount")
         }
         
         val (recipientName, recipientAddress) = extractRecipientInfo()
@@ -113,6 +118,7 @@ object EpsParser {
             recipientAddress = recipientAddress,
             currentMonthAmount = currentAmount,
             previousDebtAmount = previousDebt,
+            totalPayAmount = totalPayAmount,
             electricityBaseCost = null, // No longer scanning page 2
             discountDeadline = null,
             discountThresholdAmount = null,
@@ -173,6 +179,31 @@ object EpsParser {
                 // but the amount is always the last specific group.
                 val amount = parseAmount(match.groupValues.last())
                 if (amount != null) return amount
+            }
+        }
+        return null
+    }
+
+    /**
+     * Extracts "ZA UPLATU" amount (Total Pay Amount).
+     * This is the final amount to be paid, including all debts and discounts.
+     */
+    private fun extractTotalPayAmount(text: String): BigDecimal? {
+        val patterns = listOf(
+            // "ZA UPLATU ZA ELEKTRIČNU ENERGIJU (A+B) ... 20.571,95"
+            Regex("""(?:ZA\s+UPLATU|ЗА\s+УПЛАТУ)[^kK\d]{0,100}?([\d.,]+)(?:\s*din|\s*дин|\s*RSD|\s*РСД)?""", RegexOption.IGNORE_CASE),
+            // "UKUPNO ZA UPLATU ... "
+            Regex("""(?:UKUPNO\s+ZA\s+UPLATU|УКУПНО\s+ЗА\s+УПЛАТУ)[^kK\d]{0,100}?([\d.,]+)""", RegexOption.IGNORE_CASE),
+            // Fallback: Just "ZA UPLATU" followed by amount
+            Regex("""(?:ZA\s+UPLATU|ЗА\s+УПЛАТУ)[:\s]+([\d.,]+)""", RegexOption.IGNORE_CASE)
+        )
+
+        for (regex in patterns) {
+            val match = regex.find(text)
+            if (match != null) {
+                val amount = parseAmount(match.groupValues[1])
+                // Basic validation: Amount should be positive and reasonable
+                if (amount != null && amount > BigDecimal.ZERO) return amount
             }
         }
         return null
@@ -358,8 +389,11 @@ object EpsParser {
         val patterns = listOf(
             Regex("""\bКОРИГОВАН\b""", RegexOption.IGNORE_CASE),
             Regex("""\bKORIGOVAN\b""", RegexOption.IGNORE_CASE),
+            Regex("""КОРИГОВАН\s+\d{4}""", RegexOption.IGNORE_CASE),
+            Regex("""KORIGOVAN\s+\d{4}""", RegexOption.IGNORE_CASE),
             Regex("""(?:JANUAR|FEBRUAR|MART|APRIL|MAJ|JUN|JUL|AVGUST|SEPTEMBAR|OKTOBAR|NOVEMBAR|DECEMBAR).{0,50}КОРИГОВАН""", RegexOption.IGNORE_CASE),
-            Regex("""(?:JANUAR|FEBRUAR|MART|APRIL|MAJ|JUN|JUL|AVGUST|SEPTEMBAR|OKTOBAR|NOVEMBAR|DECEMBAR).{0,50}KORIGOVAN""", RegexOption.IGNORE_CASE)
+            Regex("""(?:JANUAR|FEBRUAR|MART|APRIL|MAJ|JUN|JUL|AVGUST|SEPTEMBAR|OKTOBAR|NOVEMBAR|DECEMBAR).{0,50}KORIGOVAN""", RegexOption.IGNORE_CASE),
+            Regex("""(?:ЈАНУАР|ФЕБРУАР|МАРТ|АПРИЛ|МАЈ|ЈУН|ЈУЛ|АВГУСТ|СЕПТЕМБАР|ОКТОБАР|НОВЕМБАР|ДЕЦЕМБАР).{0,50}КОРИГОВАН""", RegexOption.IGNORE_CASE)
         )
         
         val isCorrection = patterns.any { it.containsMatchIn(text) }

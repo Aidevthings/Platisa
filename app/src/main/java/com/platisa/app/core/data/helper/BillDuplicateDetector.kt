@@ -20,6 +20,108 @@ class BillDuplicateDetector @Inject constructor(
 ) {
 
     /**
+     * Resolves conflicts between multiple bills for the same "Slot" (Naplatni Broj + Period).
+     * This implements the "Highlander Rule": There can be only one active bill per month.
+     */
+    suspend fun resolveConflicts(receipt: ReceiptEntity) {
+        val naplatniBroj = receipt.naplatniNumber ?: return
+        val paymentId = receipt.paymentId ?: return
+        
+        // Extract period part from Payment ID: "Invoice-START-END-Amount"
+        // Example: "1003632438-20251005-20251101-29435.68" -> "20251005-20251101"
+        val parts = paymentId.split("-")
+        if (parts.size < 3) {
+            android.util.Log.w("BillDuplicateDetector", "⚠️ Cannot extract period from PaymentID: $paymentId")
+            return
+        }
+        val periodKey = "${parts[1]}-${parts[2]}" 
+
+        android.util.Log.d("BillDuplicateDetector", "⚔️ RESOLVING CONFLICTS for $naplatniBroj / PeriodKey=$periodKey")
+        
+        // Fetch all bills for this Naplatni Broj
+        val sameHouseBills = receiptDao.getReceiptsByNaplatniNumber(naplatniBroj)
+        
+        // Filter by PeriodKey in PaymentID
+        val bills = sameHouseBills.filter { it.paymentId?.contains(periodKey) == true }
+        
+        if (bills.size <= 1) {
+            android.util.Log.d("BillDuplicateDetector", "✓ No conflict, only ${bills.size} bill found for period $periodKey.")
+            return
+        }
+
+        val updates = mutableListOf<ReceiptEntity>()
+
+        // STRATEGY 1: CHECK FOR CORRECTION (The King)
+        // If a "Corrected" bill exists, it supersedes EVERYTHING else.
+        val correctedBill = bills.find { 
+            it.metadata?.contains("IS_CORRECTION:true") == true || 
+            it.merchantName.contains("KORIGOVAN", ignoreCase = true)
+        }
+
+        if (correctedBill != null) {
+            android.util.Log.w("BillDuplicateDetector", "👑 FOUND CORRECTION BILL: ${correctedBill.invoiceNumber}")
+            // Mark the correction as visible, and ALL others as hidden
+            bills.forEach { bill ->
+                if (bill.id == correctedBill.id) {
+                    if (!bill.isVisible) updates.add(bill.copy(isVisible = true))
+                } else {
+                    if (bill.isVisible) {
+                        android.util.Log.d("BillDuplicateDetector", "   -> Hiding obsolete bill: ${bill.invoiceNumber}")
+                        updates.add(bill.copy(isVisible = false))
+                    }
+                }
+            }
+        } 
+        else {
+            // STRATEGY 2: CHECK FOR STORNO (The Assassin)
+            // Storno bills kill their matching regular bills.
+            val stornoBills = bills.filter { it.isStorno }
+            val regularBills = bills.filter { !it.isStorno }
+            
+            // Map of IDs to hide
+            val idsToHide = mutableSetOf<Long>()
+            
+            stornoBills.forEach { storno ->
+                idsToHide.add(storno.id) // Hide the Storno itself
+                
+                // Find a matching regular bill (Same Amount)
+                val target = regularBills.find { regular -> 
+                    !idsToHide.contains(regular.id) && 
+                    regular.totalAmount.compareTo(storno.totalAmount) == 0
+                }
+                
+                if (target != null) {
+                    android.util.Log.w("BillDuplicateDetector", "⚔️ STORNO MATCH: ${storno.invoiceNumber} kills ${target.invoiceNumber}")
+                    idsToHide.add(target.id)
+                }
+            }
+            
+            // Apply updates
+            bills.forEach { bill ->
+                if (idsToHide.contains(bill.id)) {
+                    if (bill.isVisible) updates.add(bill.copy(isVisible = false))
+                } else {
+                    // It's a regular bill that survived Storno.
+                    // If there are multiple survivors, keep only the one with Highest Invoice Number.
+                    val bestRegular = regularBills.filter { !idsToHide.contains(it.id) }
+                        .maxByOrNull { it.invoiceNumber ?: "" }
+                    
+                    if (bill.id == bestRegular?.id) {
+                        if (!bill.isVisible) updates.add(bill.copy(isVisible = true))
+                    } else {
+                        if (bill.isVisible) updates.add(bill.copy(isVisible = false))
+                    }
+                }
+            }
+        }
+
+        if (updates.isNotEmpty()) {
+            android.util.Log.d("BillDuplicateDetector", "💾 Applying ${updates.size} visibility updates...")
+            receiptDao.updateReceipts(updates)
+        }
+    }
+
+    /**
      * Proverava da li je račun duplikat pre nego što se doda u bazu.
      */
     suspend fun checkForDuplicate(receipt: ReceiptEntity, billingPeriod: String? = null): DuplicateCheckResult {
@@ -60,42 +162,25 @@ class BillDuplicateDetector @Inject constructor(
             for (existing in periodDuplicates) {
                 if (existing.id == receipt.id) continue // Skip self
 
-                // LOGIC: Same Company -> Ignore Naplatni (Block). Different Company -> Check Naplatni.
                 val isSameMerchant = normalizeMerchant(existing.merchantName) == normalizeMerchant(receipt.merchantName)
                 
                 if (isSameMerchant) {
-                    // NEW SAFE CHECK: Even if it's same merchant, if we have Naplatni Number, they MUST match.
-                    // This prevents collisions if user has two EPS accounts with same amount.
-                    val bothHaveNaplatni = !receipt.naplatniNumber.isNullOrEmpty() && !existing.naplatniNumber.isNullOrEmpty()
-                    if (bothHaveNaplatni && receipt.naplatniNumber != existing.naplatniNumber) {
-                        android.util.Log.d("BillDuplicateDetector", "✓ Nije duplikat: Isti period+iznos+trgovac, ali RAZLIČIT naplatni broj (${receipt.naplatniNumber} vs ${existing.naplatniNumber})")
-                        continue
-                    }
-
-                    android.util.Log.w("BillDuplicateDetector", "🚨 DUPLIKAT (SAFE): Period + Amount + Isti Trgovac")
-                    val result = evaluateDuplicates(
-                        receipt, 
-                        listOf(existing), 
-                        "Isti period ($billingPeriod), iznos i trgovac"
-                    )
-                    if (result !is DuplicateCheckResult.NoDuplicate) return result
-                } else {
-                    // Trgovci su različiti (npr. Struja vs Gas, ili loš parse)
-                    // Proveri Naplatni Broj kao tie-breaker
-                    val hasSameNaplatni = !receipt.naplatniNumber.isNullOrEmpty() && 
-                                          !existing.naplatniNumber.isNullOrEmpty() && 
-                                          receipt.naplatniNumber == existing.naplatniNumber
-                                          
-                    if (hasSameNaplatni) {
-                        android.util.Log.w("BillDuplicateDetector", "🚨 DUPLIKAT (SAFE): Različit Trgovac ali Isti Naplatni")
+                    // CRITICAL CHANGE: Check if this is a RE-SCAN of the same document or a CONFLICTING document.
+                    val isSameInvoice = normalizeString(existing.invoiceNumber) == normalizeString(receipt.invoiceNumber)
+                    
+                    if (isSameInvoice) {
+                        android.util.Log.w("BillDuplicateDetector", "🚨 DUPLIKAT (SAFE): Isti nalog, period, iznos i TRGOVAC.")
                         val result = evaluateDuplicates(
                             receipt, 
                             listOf(existing), 
-                            "Isti period, iznos i naplatni broj (različit trgovac)"
+                            "Isti broj računa, period i iznos"
                         )
                         if (result !is DuplicateCheckResult.NoDuplicate) return result
                     } else {
-                        android.util.Log.d("BillDuplicateDetector", "✓ Nije duplikat: Isti period+iznos, ali različit trgovac i naplatni.")
+                        // Different Invoice Number but same House/Period/Amount.
+                        // This is a CONFLICT (e.g. Regular vs Storno), NOT a duplicate scan.
+                        // We ALLOW insertion so the resolveConflicts() can handle it.
+                        android.util.Log.d("BillDuplicateDetector", "⚔️ CONFLICT DETECTED (Different Invoice): Allowing insertion for resolution.")
                     }
                 }
             }

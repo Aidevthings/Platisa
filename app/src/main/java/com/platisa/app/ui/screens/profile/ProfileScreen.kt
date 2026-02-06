@@ -56,6 +56,7 @@ fun ProfileScreen(
 ) {
     val userName by viewModel.userName.collectAsState()
     val avatarPath by viewModel.avatarPath.collectAsState()
+    val cameraAvatarPath by viewModel.cameraAvatarPath.collectAsState()
     val celebrationImagePath by viewModel.celebrationImagePath.collectAsState()
     val splashStyle by viewModel.splashScreenStyle.collectAsState()
     val customColors = LocalPlatisaColors.current
@@ -102,18 +103,18 @@ fun ProfileScreen(
                 try {
                     val avatarsDir = java.io.File(context.filesDir, "avatars")
                     if (!avatarsDir.exists()) avatarsDir.mkdirs()
-                    val fileName = "avatar_camera_${System.currentTimeMillis()}.jpg"
+                    val fileName = "avatar_camera_latest.jpg"
                     val destFile = java.io.File(avatarsDir, fileName)
                     java.io.FileOutputStream(destFile).use { out ->
                         bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, out)
                     }
-                    viewModel.setAvatarFromUri(Uri.fromFile(destFile))
+                    viewModel.setAvatarFromUri(Uri.fromFile(destFile), isCamera = true)
                 } catch (e: Exception) {
                     android.widget.Toast.makeText(context, "Greška pri čuvanju slike", android.widget.Toast.LENGTH_SHORT).show()
                 }
             } else if (photoUri != null) {
                 // Use the saved file URI
-                viewModel.setAvatarFromUri(photoUri!!)
+                viewModel.setAvatarFromUri(photoUri!!, isCamera = true)
             }
         }
     }
@@ -214,12 +215,18 @@ fun ProfileScreen(
                             // Show custom avatar
                             Image(
                                 painter = rememberAsyncImagePainter(
-                                    if (avatarPath!!.startsWith("custom:")) {
-                                        File(avatarPath!!.removePrefix("custom:"))
-                                    } else {
-                                        // Predefined avatar using resource identifier
-                                        val resName = avatarPath!!.removePrefix("predefined:")
-                                        context.resources.getIdentifier(resName, "drawable", context.packageName)
+                                    when {
+                                        avatarPath!!.startsWith("custom:") -> {
+                                            File(avatarPath!!.removePrefix("custom:"))
+                                        }
+                                        avatarPath!!.startsWith("camera:") -> {
+                                            File(avatarPath!!.removePrefix("camera:"))
+                                        }
+                                        else -> {
+                                            // Predefined avatar using resource identifier
+                                            val resName = avatarPath!!.removePrefix("predefined:")
+                                            context.resources.getIdentifier(resName, "drawable", context.packageName)
+                                        }
                                     }
                                 ),
                                 contentDescription = "Avatar",
@@ -316,8 +323,44 @@ fun ProfileScreen(
                     modifier = Modifier.padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    val avatarChunks = viewModel.predefinedAvatars.chunked(4)
-                    avatarChunks.forEach { rowItems ->
+                    // First row: Camera Slot + first 3 predefined avatars
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // Camera Slot
+                        Box(modifier = Modifier.weight(1f)) {
+                            CameraAvatarSlot(
+                                cameraAvatarPath = cameraAvatarPath,
+                                isSelected = avatarPath?.startsWith("camera:") == true,
+                                onClick = { 
+                                    if (cameraAvatarPath != null) {
+                                        viewModel.setAvatarFromCameraSlot()
+                                    } else {
+                                        viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
+                                        cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
+                                    }
+                                }
+                            )
+                        }
+                        
+                        // First 3 predefined avatars
+                        val firstThree = viewModel.predefinedAvatars.take(3)
+                        firstThree.forEach { avatarName ->
+                            Box(modifier = Modifier.weight(1f)) {
+                                AvatarItem(
+                                    avatarName = avatarName,
+                                    isSelected = avatarPath == "predefined:$avatarName",
+                                    onClick = { viewModel.setAvatarFromPredefined(avatarName) }
+                                )
+                            }
+                        }
+                    }
+
+                    // Remaining predefined avatars
+                    val remainingAvatars = viewModel.predefinedAvatars.drop(3)
+                    val remainingChunks = remainingAvatars.chunked(4)
+                    remainingChunks.forEach { rowItems ->
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -498,6 +541,44 @@ fun SectionTitle(title: String) {
         color = MaterialTheme.colorScheme.onBackground,
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
     )
+}
+
+@Composable
+fun CameraAvatarSlot(
+    cameraAvatarPath: String?,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    val customColors = LocalPlatisaColors.current
+    Box(
+        modifier = Modifier
+            .size(70.dp)
+            .clip(CircleShape)
+            .border(
+                width = if (isSelected) 3.dp else 1.dp,
+                color = if (isSelected) customColors.neonCyan else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+                shape = CircleShape
+            )
+            .background(MaterialTheme.colorScheme.surface)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        if (cameraAvatarPath != null) {
+            Image(
+                painter = rememberAsyncImagePainter(model = File(cameraAvatarPath)),
+                contentDescription = "Camera Avatar",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+        } else {
+            Icon(
+                imageVector = Icons.Default.AddAPhoto,
+                contentDescription = "Take Photo",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                modifier = Modifier.size(30.dp)
+            )
+        }
+    }
 }
 
 @Composable

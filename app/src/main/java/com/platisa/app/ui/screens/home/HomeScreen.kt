@@ -391,30 +391,42 @@ fun HomeScreen(
                                     ) {
                                         val currentAvatarPath = avatarPath
                                         if (currentAvatarPath != null) {
-                                            if (currentAvatarPath.startsWith("custom:")) {
-                                                val file = java.io.File(currentAvatarPath.removePrefix("custom:"))
-                                                androidx.compose.foundation.Image(
-                                                    painter = coil.compose.rememberAsyncImagePainter(file),
-                                                    contentDescription = "Avatar",
-                                                    modifier = Modifier.fillMaxSize(),
-                                                    contentScale = androidx.compose.ui.layout.ContentScale.Crop
-                                                )
-                                            } else if (currentAvatarPath.startsWith("predefined:")) {
-                                                val resName = currentAvatarPath.removePrefix("predefined:")
-                                                val resId = context.resources.getIdentifier(resName, "drawable", context.packageName)
-                                                if (resId != 0) {
+                                            when {
+                                                currentAvatarPath.startsWith("custom:") -> {
+                                                    val file = java.io.File(currentAvatarPath.removePrefix("custom:"))
                                                     androidx.compose.foundation.Image(
-                                                        painter = coil.compose.rememberAsyncImagePainter(resId),
+                                                        painter = coil.compose.rememberAsyncImagePainter(file),
                                                         contentDescription = "Avatar",
                                                         modifier = Modifier.fillMaxSize(),
                                                         contentScale = androidx.compose.ui.layout.ContentScale.Crop
                                                     )
-                                                } else {
-                                                    Icon(
-                                                        imageVector = Icons.Default.Person,
+                                                }
+                                                currentAvatarPath.startsWith("camera:") -> {
+                                                    val file = java.io.File(currentAvatarPath.removePrefix("camera:"))
+                                                    androidx.compose.foundation.Image(
+                                                        painter = coil.compose.rememberAsyncImagePainter(file),
                                                         contentDescription = "Avatar",
-                                                        modifier = Modifier.size(32.dp)
+                                                        modifier = Modifier.fillMaxSize(),
+                                                        contentScale = androidx.compose.ui.layout.ContentScale.Crop
                                                     )
+                                                }
+                                                currentAvatarPath.startsWith("predefined:") -> {
+                                                    val resName = currentAvatarPath.removePrefix("predefined:")
+                                                    val resId = context.resources.getIdentifier(resName, "drawable", context.packageName)
+                                                    if (resId != 0) {
+                                                        androidx.compose.foundation.Image(
+                                                            painter = coil.compose.rememberAsyncImagePainter(resId),
+                                                            contentDescription = "Avatar",
+                                                            modifier = Modifier.fillMaxSize(),
+                                                            contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                                                        )
+                                                    } else {
+                                                        Icon(
+                                                            imageVector = Icons.Default.Person,
+                                                            contentDescription = "Avatar",
+                                                            modifier = Modifier.size(32.dp)
+                                                        )
+                                                    }
                                                 }
                                             }
                                         } else {

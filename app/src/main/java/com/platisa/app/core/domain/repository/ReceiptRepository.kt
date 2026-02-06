@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.Flow
 
 interface ReceiptRepository {
     fun getAllReceipts(): Flow<List<Receipt>>
+    fun getVisibleReceipts(): Flow<List<Receipt>> // Only shows isVisible=true
     fun searchReceipts(query: String): Flow<List<Receipt>>
     fun getReceiptsByFilter(startDate: Long, endDate: Long, minAmount: Double, maxAmount: Double): Flow<List<Receipt>>
     suspend fun getReceiptsInRange(startDate: Long, endDate: Long): List<Receipt>

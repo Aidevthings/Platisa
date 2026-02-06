@@ -56,16 +56,14 @@ object DeterministicIdGenerator {
                 null
             } else null
 
-            // LOGIC v6: EPS STABILIZATION
+            // LOGIC v6: EPS STABILIZATION (Invoice + Period + Amount)
             val rawString = when {
-                // If it's EPS and we have an invoice number, use it (standard)
-                merchantNorm == "eps" && invoiceNorm.length >= 8 -> {
-                    "${merchantNorm}_inv_${invoiceNorm}"
+                // For EPS, we want strictly: Invoice + Period + Amount
+                merchantNorm == "eps" && invoiceNorm.isNotEmpty() -> {
+                    "${merchantNorm}_inv_${invoiceNorm}_${dateStr}_${amountStr}"
                 }
                 
-                // If it's EPS and we have a custom Payment ID (likely passed via metadata or specialized invoice field)
-                // we should really use it. 
-                // For now, if invoice is missing for EPS, we MUST include the date to separate monthly bills.
+                // Fallback for EPS if invoice is somehow missing
                 merchantNorm == "eps" -> {
                     "${merchantNorm}_${dateStr}_${amountStr}"
                 }

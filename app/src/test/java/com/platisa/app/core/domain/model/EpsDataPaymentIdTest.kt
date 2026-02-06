@@ -33,10 +33,11 @@ class EpsDataPaymentIdTest {
         val naplatniBroj = "2004158536"
         val periodStart = createDate(2025, 10, 5)
         val periodEnd = createDate(2025, 11, 1)
+        val amount = java.math.BigDecimal("20571.95")
         
-        val result = EpsData.createPaymentId(naplatniBroj, periodStart, periodEnd)
+        val result = EpsData.createPaymentId(naplatniBroj, periodStart, periodEnd, amount)
         
-        assertEquals("2004158536-20251005-20251101", result)
+        assertEquals("2004158536-20251005-20251101-20571.95", result)
     }
 
     @Test
@@ -44,10 +45,11 @@ class EpsDataPaymentIdTest {
         val naplatniBroj = "123456789"
         val periodStart = createDate(2025, 1, 5)
         val periodEnd = createDate(2025, 2, 1)
+        val amount = java.math.BigDecimal("20571.95")
         
-        val result = EpsData.createPaymentId(naplatniBroj, periodStart, periodEnd)
+        val result = EpsData.createPaymentId(naplatniBroj, periodStart, periodEnd, amount)
         
-        assertEquals("123456789-20250105-20250201", result)
+        assertEquals("123456789-20250105-20250201-20571.95", result)
     }
 
     @Test
@@ -55,10 +57,11 @@ class EpsDataPaymentIdTest {
         val naplatniBroj = "2004158536"
         val periodStart = createDate(2025, 12, 1)
         val periodEnd = createDate(2026, 1, 1)
+        val amount = java.math.BigDecimal("20571.95")
         
-        val result = EpsData.createPaymentId(naplatniBroj, periodStart, periodEnd)
+        val result = EpsData.createPaymentId(naplatniBroj, periodStart, periodEnd, amount)
         
-        assertEquals("2004158536-20251201-20260101", result)
+        assertEquals("2004158536-20251201-20260101-20571.95", result)
     }
 
     @Test
@@ -66,10 +69,11 @@ class EpsDataPaymentIdTest {
         val naplatniBroj = "2004158536"
         val periodStart = createDate(2024, 2, 29)
         val periodEnd = createDate(2024, 3, 31)
+        val amount = java.math.BigDecimal("20571.95")
         
-        val result = EpsData.createPaymentId(naplatniBroj, periodStart, periodEnd)
+        val result = EpsData.createPaymentId(naplatniBroj, periodStart, periodEnd, amount)
         
-        assertEquals("2004158536-20240229-20240331", result)
+        assertEquals("2004158536-20240229-20240331-20571.95", result)
     }
 
     // ============================================
@@ -80,8 +84,9 @@ class EpsDataPaymentIdTest {
     fun `createPaymentId returns null when naplatniBroj is null`() {
         val periodStart = createDate(2025, 10, 5)
         val periodEnd = createDate(2025, 11, 1)
+        val amount = java.math.BigDecimal("20571.95")
         
-        val result = EpsData.createPaymentId(null, periodStart, periodEnd)
+        val result = EpsData.createPaymentId(null, periodStart, periodEnd, amount)
         
         assertNull("Should return null when naplatniBroj is null", result)
     }
@@ -90,8 +95,9 @@ class EpsDataPaymentIdTest {
     fun `createPaymentId returns null when periodStart is null`() {
         val naplatniBroj = "2004158536"
         val periodEnd = createDate(2025, 11, 1)
+        val amount = java.math.BigDecimal("20571.95")
         
-        val result = EpsData.createPaymentId(naplatniBroj, null, periodEnd)
+        val result = EpsData.createPaymentId(naplatniBroj, null, periodEnd, amount)
         
         assertNull("Should return null when periodStart is null", result)
     }
@@ -100,15 +106,16 @@ class EpsDataPaymentIdTest {
     fun `createPaymentId returns null when periodEnd is null`() {
         val naplatniBroj = "2004158536"
         val periodStart = createDate(2025, 10, 5)
+        val amount = java.math.BigDecimal("20571.95")
         
-        val result = EpsData.createPaymentId(naplatniBroj, periodStart, null)
+        val result = EpsData.createPaymentId(naplatniBroj, periodStart, null, amount)
         
         assertNull("Should return null when periodEnd is null", result)
     }
 
     @Test
     fun `createPaymentId returns null when all parameters are null`() {
-        val result = EpsData.createPaymentId(null, null, null)
+        val result = EpsData.createPaymentId(null, null, null, null)
         
         assertNull("Should return null when all parameters are null", result)
     }
@@ -120,17 +127,20 @@ class EpsDataPaymentIdTest {
     @Test
     fun `same naplatniBroj different periods creates different PaymentIds`() {
         val naplatniBroj = "2004158536"
+        val amount = java.math.BigDecimal("20571.95")
         
         val id1 = EpsData.createPaymentId(
             naplatniBroj,
             createDate(2025, 9, 5),
-            createDate(2025, 10, 1)
+            createDate(2025, 10, 1),
+            amount
         )
         
         val id2 = EpsData.createPaymentId(
             naplatniBroj,
             createDate(2025, 10, 5),
-            createDate(2025, 11, 1)
+            createDate(2025, 11, 1),
+            amount
         )
         
         assertNotEquals("Different periods should create different PaymentIds", id1, id2)
@@ -140,9 +150,10 @@ class EpsDataPaymentIdTest {
     fun `different naplatniBroj same period creates different PaymentIds`() {
         val periodStart = createDate(2025, 10, 5)
         val periodEnd = createDate(2025, 11, 1)
+        val amount = java.math.BigDecimal("20571.95")
         
-        val id1 = EpsData.createPaymentId("2004158536", periodStart, periodEnd)
-        val id2 = EpsData.createPaymentId("2004158537", periodStart, periodEnd)
+        val id1 = EpsData.createPaymentId("2004158536", periodStart, periodEnd, amount)
+        val id2 = EpsData.createPaymentId("2004158537", periodStart, periodEnd, amount)
         
         assertNotEquals("Different naplatniBroj should create different PaymentIds", id1, id2)
     }
@@ -152,9 +163,10 @@ class EpsDataPaymentIdTest {
         val naplatniBroj = "2004158536"
         val periodStart = createDate(2025, 10, 5)
         val periodEnd = createDate(2025, 11, 1)
+        val amount = java.math.BigDecimal("20571.95")
         
-        val id1 = EpsData.createPaymentId(naplatniBroj, periodStart, periodEnd)
-        val id2 = EpsData.createPaymentId(naplatniBroj, periodStart, periodEnd)
+        val id1 = EpsData.createPaymentId(naplatniBroj, periodStart, periodEnd, amount)
+        val id2 = EpsData.createPaymentId(naplatniBroj, periodStart, periodEnd, amount)
         
         assertEquals("Same parameters should always create same PaymentId", id1, id2)
     }
@@ -168,11 +180,12 @@ class EpsDataPaymentIdTest {
         val naplatniBroj = ""
         val periodStart = createDate(2025, 10, 5)
         val periodEnd = createDate(2025, 11, 1)
+        val amount = java.math.BigDecimal("20571.95")
         
-        val result = EpsData.createPaymentId(naplatniBroj, periodStart, periodEnd)
+        val result = EpsData.createPaymentId(naplatniBroj, periodStart, periodEnd, amount)
         
         // Empty string is not null, so should create a PaymentId
-        assertEquals("-20251005-20251101", result)
+        assertEquals("-20251005-20251101-20571.95", result)
     }
 
     @Test
@@ -180,10 +193,11 @@ class EpsDataPaymentIdTest {
         val naplatniBroj = "12345678901234567890"
         val periodStart = createDate(2025, 10, 5)
         val periodEnd = createDate(2025, 11, 1)
+        val amount = java.math.BigDecimal("20571.95")
         
-        val result = EpsData.createPaymentId(naplatniBroj, periodStart, periodEnd)
+        val result = EpsData.createPaymentId(naplatniBroj, periodStart, periodEnd, amount)
         
-        assertEquals("12345678901234567890-20251005-20251101", result)
+        assertEquals("12345678901234567890-20251005-20251101-20571.95", result)
     }
 
     @Test
@@ -191,11 +205,12 @@ class EpsDataPaymentIdTest {
         val naplatniBroj = "200-415-8536"
         val periodStart = createDate(2025, 10, 5)
         val periodEnd = createDate(2025, 11, 1)
+        val amount = java.math.BigDecimal("20571.95")
         
-        val result = EpsData.createPaymentId(naplatniBroj, periodStart, periodEnd)
+        val result = EpsData.createPaymentId(naplatniBroj, periodStart, periodEnd, amount)
         
         // Special characters are preserved
-        assertEquals("200-415-8536-20251005-20251101", result)
+        assertEquals("200-415-8536-20251005-20251101-20571.95", result)
     }
 
     @Test
@@ -203,10 +218,11 @@ class EpsDataPaymentIdTest {
         val naplatniBroj = "2004158536"
         val periodStart = createDate(1990, 1, 1)
         val periodEnd = createDate(1990, 2, 1)
+        val amount = java.math.BigDecimal("20571.95")
         
-        val result = EpsData.createPaymentId(naplatniBroj, periodStart, periodEnd)
+        val result = EpsData.createPaymentId(naplatniBroj, periodStart, periodEnd, amount)
         
-        assertEquals("2004158536-19900101-19900201", result)
+        assertEquals("2004158536-19900101-19900201-20571.95", result)
     }
 
     @Test
@@ -214,10 +230,11 @@ class EpsDataPaymentIdTest {
         val naplatniBroj = "2004158536"
         val periodStart = createDate(2050, 12, 1)
         val periodEnd = createDate(2051, 1, 1)
+        val amount = java.math.BigDecimal("20571.95")
         
-        val result = EpsData.createPaymentId(naplatniBroj, periodStart, periodEnd)
+        val result = EpsData.createPaymentId(naplatniBroj, periodStart, periodEnd, amount)
         
-        assertEquals("2004158536-20501201-20510101", result)
+        assertEquals("2004158536-20501201-20510101-20571.95", result)
     }
 
     // ============================================
@@ -237,10 +254,11 @@ class EpsDataPaymentIdTest {
             periodStart = createDate(2025, 10, 5),
             periodEnd = createDate(2025, 11, 1),
             dueDate = createDate(2025, 11, 15),
-            paymentId = "2004158536-20251005-20251101"
+            totalPayAmount = java.math.BigDecimal("20571.95"),
+            paymentId = "2004158536-20251005-20251101-20571.95"
         )
         
-        assertEquals("2004158536-20251005-20251101", epsData.paymentId)
+        assertEquals("2004158536-20251005-20251101-20571.95", epsData.paymentId)
         assertFalse(epsData.isStorno)
     }
 
@@ -257,6 +275,7 @@ class EpsDataPaymentIdTest {
             periodStart = null,
             periodEnd = null,
             dueDate = null,
+            totalPayAmount = null,
             paymentId = null
         )
         
@@ -276,6 +295,7 @@ class EpsDataPaymentIdTest {
             periodStart = null,
             periodEnd = null,
             dueDate = null,
+            totalPayAmount = null,
             paymentId = null,
             isStorno = true
         )

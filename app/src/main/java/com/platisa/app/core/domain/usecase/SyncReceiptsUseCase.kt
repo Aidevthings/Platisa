@@ -291,7 +291,6 @@ class SyncReceiptsUseCase @Inject constructor(
             // DEBUG: Log file with parsed data for easier tracing
             android.util.Log.d("SyncReceiptsUseCase", "📄 ========== PARSED FILE ==========")
             android.util.Log.d("SyncReceiptsUseCase", "📄 File: ${file.name}")
-            android.util.Log.d("SyncReceiptsUseCase", "📄 Naplatni: ${epsData?.naplatniBroj}")
             android.util.Log.d("SyncReceiptsUseCase", "📄 PaymentId: ${epsData?.paymentId}")
             android.util.Log.d("SyncReceiptsUseCase", "📄 Invoice: ${epsData?.invoiceNumber}")
             android.util.Log.d("SyncReceiptsUseCase", "📄 IPS Ref: $ipsReferenceNumber")
@@ -309,15 +308,15 @@ class SyncReceiptsUseCase @Inject constructor(
             
             val finalRecipientAddress = epsData?.recipientAddress ?: parsed.recipientAddress
 
-            // Priority: QR amount (if no debt) > EPS Current Monthly Charge > EPS amount > Receipt parser amount
-            // SMART PARSING FIX: Prioritize 'currentMonthAmount' for Statistics accuracy
-            val smartAmount = epsData?.currentMonthAmount
-            val totalAmount = if (smartAmount != null && smartAmount > BigDecimal.ZERO) {
-                android.util.Log.d("SyncReceiptsUseCase", "💡 USING SMART PARSING AMOUNT: $smartAmount (Original Total: ${epsData?.totalConsumption ?: parsed.totalAmount})")
-                smartAmount
-            } else {
-                qrAmount ?: epsData?.totalConsumption ?: parsed.totalAmount ?: BigDecimal.ZERO
-            }
+            // Priority for HOME SCREEN display: 
+            // We want to show what was SPENT this month, not the total debt.
+            val spendingAmount = epsData?.currentMonthAmount ?: parsed.currentMonthAmount ?: qrAmount ?: parsed.totalAmount ?: BigDecimal.ZERO
+            
+            // Total amount to PAY (including debt) - Used for ID generation and Payment
+            val totalToPay = epsData?.totalPayAmount ?: qrAmount ?: spendingAmount
+
+            android.util.Log.d("SyncReceiptsUseCase", "💰 RESOLVED AMOUNTS: Spending=$spendingAmount, TotalToPay=$totalToPay")
+
             val finalMerchant = merchantName ?: parsed.merchantName ?: "Unknown"
             
             // Check if PAID in Firestore
@@ -332,20 +331,24 @@ class SyncReceiptsUseCase @Inject constructor(
             val isInfostan = finalMerchant.contains("INFOSTAN", ignoreCase = true) || 
                              finalMerchant.contains("JKP", ignoreCase = true) ||
                              finalMerchant.contains("ИНФОСТАН", ignoreCase = true)
+            
+            val isEps = finalMerchant.contains("EPS", ignoreCase = true) || 
+                        finalMerchant.contains("ELEKTRO", ignoreCase = true) ||
+                        finalMerchant.contains("ЕПС", ignoreCase = true)
 
-            // FIX for Infostan: User explicitly wants "Broj računa" (top of bill) 
-            // instead of "Poziv na broj" (QR RO / bottom of bill).
-            // Text parser (parsed.invoiceNumber) extracts "Broj računa".
-            // QR parser (ipsReferenceNumber) extracts "Poziv na broj".
-            val finalInvoiceNumber = if (isInfostan) {
-                 parsed.invoiceNumber ?: ipsReferenceNumber ?: epsData?.invoiceNumber
-            } else {
-                 ipsReferenceNumber ?: epsData?.invoiceNumber ?: parsed.invoiceNumber
+            // PRIORITY LOGIC:
+            // 1. Infostan: User wants "Broj računa" (text) > QR Ref
+            // 2. EPS: Must use "Račun broj" (text) because QR Ref is static (Naplatni Broj based)
+            // 3. Others: QR Ref is usually better/more unique
+            val finalInvoiceNumber = when {
+                isInfostan -> parsed.invoiceNumber ?: ipsReferenceNumber ?: epsData?.invoiceNumber
+                isEps -> epsData?.invoiceNumber ?: parsed.invoiceNumber ?: ipsReferenceNumber
+                else -> ipsReferenceNumber ?: epsData?.invoiceNumber ?: parsed.invoiceNumber
             }
 
             val baseReceipt = Receipt(
                 merchantName = finalMerchant,
-                totalAmount = totalAmount,
+                totalAmount = spendingAmount, // This goes to Home Screen
                 date = epsData?.periodEnd ?: parsed.date ?: Date(),
                 dueDate = epsData?.dueDate ?: parsed.dueDate,
                 imagePath = file.absolutePath,
@@ -359,10 +362,10 @@ class SyncReceiptsUseCase @Inject constructor(
                 externalId = "", // Placeholder
                 recipientName = finalRecipientName,
                 recipientAddress = finalRecipientAddress,
-                currentMonthAmount = epsData?.currentMonthAmount,
-                previousDebtAmount = epsData?.previousDebtAmount,
+                currentMonthAmount = epsData?.currentMonthAmount ?: parsed.currentMonthAmount ?: spendingAmount,
+                previousDebtAmount = epsData?.previousDebtAmount ?: parsed.previousDebtAmount,
 
-                metadata = "SOURCE_EMAIL:$accountEmail|GMAIL_ID:$externalId" + 
+                metadata = "SOURCE_EMAIL:$accountEmail|GMAIL_ID:$externalId|TOTAL_TO_PAY:$totalToPay" + 
                            (if (epsData?.electricityBaseCost != null) "|EPS_BASE_COST:${epsData.electricityBaseCost}" else "") +
                            (if (epsData?.discountDeadline != null) "|EPS_DEADLINE:${epsData.discountDeadline}" else "") +
                            (if (epsData?.discountThresholdAmount != null) "|EPS_THRESHOLD_AMOUNT:${epsData.discountThresholdAmount}" else "") +

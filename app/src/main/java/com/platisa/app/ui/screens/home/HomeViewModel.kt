@@ -55,7 +55,7 @@ class HomeViewModel @Inject constructor(
     val conversionRate: StateFlow<java.math.BigDecimal> = _conversionRate.asStateFlow()
 
     val receipts: StateFlow<List<Receipt>> = combine(
-        repository.getAllReceipts(),
+        repository.getVisibleReceipts(),
         _selectedHomePeriod,
         _currency,
         _conversionRate
