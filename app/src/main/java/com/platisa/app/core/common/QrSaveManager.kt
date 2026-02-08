@@ -2,21 +2,19 @@ package com.platisa.app.core.common
 
 import android.content.ContentValues
 import android.content.Context
-import android.graphics.*
+import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
 import android.util.Log
 import java.io.OutputStream
-import java.text.SimpleDateFormat
-import java.util.*
 
 object QrSaveManager {
 
     private const val TAG = "QrSaveManager"
 
     /**
-     * Generates an enhanced QR image with header/footer and saves it to the gallery.
+     * Generates a clean QR image (no header/footer text) and saves it to the gallery.
      */
     fun saveEnhancedQrToGallery(
         context: Context,
@@ -30,53 +28,12 @@ object QrSaveManager {
             val qrSize = 512
             val qrBitmap = QrCodeGenerator.generateQrCode(qrData, qrSize) ?: return null
 
-            // 2. Create larger canvas for header/footer
-            val padding = 40
-            val headerHeight = 100
-            val footerHeight = 60
-            val totalWidth = qrSize + (padding * 2)
-            val totalHeight = qrSize + headerHeight + footerHeight + (padding * 2)
-
-            val finalBitmap = Bitmap.createBitmap(totalWidth, totalHeight, Bitmap.Config.ARGB_8888)
-            val canvas = Canvas(finalBitmap)
-            canvas.drawColor(Color.WHITE)
-
-            val paint = Paint().apply {
-                isAntiAlias = true
-                color = Color.BLACK
-                textAlign = Paint.Align.CENTER
-            }
-
-            // 3. Draw Header (Merchant + Amount)
-            paint.apply {
-                textSize = 34f
-                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            }
-            canvas.drawText(merchantName.uppercase(), (totalWidth / 2).toFloat(), 50f, paint)
-            
-            paint.apply {
-                textSize = 30f
-                typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
-            }
-            canvas.drawText("Iznos: $amount", (totalWidth / 2).toFloat(), 95f, paint)
-
-            // 4. Draw QR Code
-            canvas.drawBitmap(qrBitmap, padding.toFloat(), (headerHeight + padding).toFloat(), null)
-
-            // 5. Draw Footer (Date)
-            paint.apply {
-                textSize = 24f
-                color = Color.DKGRAY
-            }
-            val footerY = totalHeight - 40f
-            canvas.drawText("Datum računa: $date", (totalWidth / 2).toFloat(), footerY, paint)
-
-            // 6. Save to Gallery
+            // 2. Save clean QR bitmap to Gallery (no extra text)
             // Format: Platisa_Merchant_Date_Timestamp (to ensure uniqueness)
             val cleanMerchant = merchantName.replace(" ", "_").replace(".", "").replace(",", "")
             val cleanDate = date.replace(".", "_")
             val fileName = "Platisa_${cleanMerchant}_${cleanDate}_${System.currentTimeMillis()}"
-            return saveBitmapToMediaStore(context, finalBitmap, fileName)
+            return saveBitmapToMediaStore(context, qrBitmap, fileName)
 
         } catch (e: Exception) {
             Log.e(TAG, "Failed to save enhanced QR", e)
