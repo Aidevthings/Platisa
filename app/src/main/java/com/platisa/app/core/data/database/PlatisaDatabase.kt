@@ -22,7 +22,7 @@ import com.platisa.app.core.data.database.entity.TagEntity
         EpsDataEntity::class,
         com.platisa.app.core.data.database.entity.ReceiptItemEntity::class
     ],
-    version = 17,
+    version = 18,
     exportSchema = false
 )
 @TypeConverters(Converters::class)

@@ -10,9 +10,12 @@ object ImageUtils {
 
     fun compressImage(context: Context, imageFile: File, quality: Int = 80): File? {
         return try {
-            val bitmap = BitmapFactory.decodeFile(imageFile.absolutePath)
-            if (bitmap == null) return null
-            saveToWebp(context, bitmap, quality)
+            val bitmap = BitmapFactory.decodeFile(imageFile.absolutePath) ?: return null
+            try {
+                saveToWebp(context, bitmap, quality)
+            } finally {
+                bitmap.recycle()
+            }
         } catch (e: Exception) {
             e.printStackTrace()
             null
@@ -60,21 +63,22 @@ object ImageUtils {
     }
 
     private fun saveToWebp(context: Context, bitmap: Bitmap, quality: Int): File? {
+        val file = File(context.cacheDir, "processed_${System.currentTimeMillis()}.webp")
         return try {
-            val file = File(context.cacheDir, "processed_${System.currentTimeMillis()}.webp")
-            val outputStream = FileOutputStream(file)
-            
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-                bitmap.compress(Bitmap.CompressFormat.WEBP_LOSSY, quality, outputStream)
+            val format = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                Bitmap.CompressFormat.WEBP_LOSSY
             } else {
-                bitmap.compress(Bitmap.CompressFormat.WEBP, quality, outputStream)
+                Bitmap.CompressFormat.WEBP
             }
             
-            outputStream.flush()
-            outputStream.close()
+            FileOutputStream(file).use { outputStream ->
+                bitmap.compress(format, quality, outputStream)
+                outputStream.flush()
+            }
             file
         } catch (e: Exception) {
             e.printStackTrace()
+            if (file.exists()) file.delete()
             null
         }
     }

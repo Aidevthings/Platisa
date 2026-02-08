@@ -30,17 +30,24 @@ class PlatisaApplication : Application(), Configuration.Provider {
             
             if (resultCode == com.google.android.gms.common.ConnectionResult.SUCCESS) {
                 // Try to initialize ProviderInstaller to ensure modern TLS support
-                com.google.android.gms.security.ProviderInstaller.installIfNeededAsync(this, 
-                    object : com.google.android.gms.security.ProviderInstaller.ProviderInstallListener {
-                        override fun onProviderInstalled() {
-                            Timber.i("Security Provider installed successfully")
-                        }
+                // Defensively wrap this as it can trigger SecurityExceptions on some emulators
+                try {
+                    com.google.android.gms.security.ProviderInstaller.installIfNeededAsync(this, 
+                        object : com.google.android.gms.security.ProviderInstaller.ProviderInstallListener {
+                            override fun onProviderInstalled() {
+                                Timber.i("Security Provider installed successfully")
+                            }
 
-                        override fun onProviderInstallFailed(errorCode: Int, recoveryIntent: android.content.Intent?) {
-                            Timber.w("Security Provider installation failed: $errorCode. This is expected on some emulators.")
+                            override fun onProviderInstallFailed(errorCode: Int, recoveryIntent: android.content.Intent?) {
+                                Timber.w("Security Provider installation failed: $errorCode. This is expected on some emulators.")
+                            }
                         }
-                    }
-                )
+                    )
+                } catch (e: SecurityException) {
+                    Timber.w("SecurityException while installing GMS Provider: ${e.message}. App will continue using system defaults.")
+                } catch (e: Exception) {
+                    Timber.w("Non-critical exception during ProviderInstaller: ${e.message}")
+                }
             } else {
                 Timber.w("GMS not fully available (Result code: $resultCode)")
             }

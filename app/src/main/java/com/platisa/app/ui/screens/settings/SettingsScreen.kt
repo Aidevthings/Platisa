@@ -758,10 +758,8 @@ fun SettingsScreen(
                                     )
                                 }
                             }
-
                         }
                     }
-
                 }
             }
         }

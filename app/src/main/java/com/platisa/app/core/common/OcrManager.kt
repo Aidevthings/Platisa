@@ -18,7 +18,7 @@ import java.io.IOException
  * 2. Post-processing normalization in EpsParser to fix common OCR mistakes
  */
 object OcrManager {
-    private val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+    private val recognizer by lazy { TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS) }
 
     suspend fun processImage(context: Context, imageUri: Uri): String {
         return try {
@@ -39,14 +39,17 @@ object OcrManager {
                     android.util.Log.d("OcrManager", "Processing PDF via OCR (Direct text extraction was empty/insufficient)")
                     val bitmap = PdfUtils.renderToBitmap(file)
                     if (bitmap != null) {
-                        val image = InputImage.fromBitmap(bitmap, 0)
-                        val result = recognizer.process(image).await()
-                        val text = result.text
-                        bitmap.recycle()
-                        
-                        // Log OCR result length for debugging
-                        android.util.Log.d("OcrManager", "OCR result length: ${text.length} characters")
-                        return text
+                        try {
+                            val image = InputImage.fromBitmap(bitmap, 0)
+                            val result = recognizer.process(image).await()
+                            val text = result.text
+                            
+                            // Log OCR result length for debugging
+                            android.util.Log.d("OcrManager", "OCR result length: ${text.length} characters")
+                            return text
+                        } finally {
+                            bitmap.recycle()
+                        }
                     }
                 }
             }

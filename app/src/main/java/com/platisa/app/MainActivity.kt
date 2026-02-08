@@ -50,6 +50,12 @@ class MainActivity : BaseActivity() {
         
         super.onCreate(savedInstanceState)
         
+        try {
+            com.platisa.app.core.common.DiagnosticsHelper.logAppSignature(this)
+        } catch (e: Exception) {
+            android.util.Log.e("MainActivity", "Failed to log app signature: ${e.message}")
+        }
+        
         handleIntent(intent)
         enableEdgeToEdge()
         setContent {

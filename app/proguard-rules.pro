@@ -44,20 +44,30 @@
 -keep class com.platisa.app.di.** { *; }
 
 # --- Retrofit / OkHttp / Gson ---
+-keepattributes Signature, EnclosingMethod, InnerClasses, *Annotation*
+-keepattributes RuntimeVisibleAnnotations, RuntimeVisibleParameterAnnotations, RuntimeVisibleTypeAnnotations
+
 # Retrofit
--keepattributes Signature
--keepattributes Exceptions
+-keep class retrofit2.** { *; }
+-dontwarn retrofit2.**
 -keepclasseswithmembers class * {
     @retrofit2.http.* <methods>;
 }
 
 # Gson
--keepattributes Signature
--keepattributes *Annotation*
+-keep class com.google.gson.** { *; }
 -keep class sun.misc.Unsafe { *; }
 -keep class com.google.gson.stream.** { *; }
-# Keep data classes that are used for serialization/deserialization
--keep class com.platisa.app.core.data.model.** { *; }
+
+# Keep data classes and interfaces used by Retrofit
+-keep class com.platisa.app.core.data.network.** { *; }
+-keep interface com.platisa.app.core.data.network.** { *; }
+-keepclassmembers class com.platisa.app.core.data.network.** { *; }
+
+# Specifically keep members of CurrencyResponse for Map parsing
+-keepclassmembers class com.platisa.app.core.data.network.CurrencyResponse {
+    <fields>;
+}
 
 # --- ML Kit / CameraX ---
 # Usually R8 handles these well, but keeping them safe just in case
@@ -75,3 +85,21 @@
 -dontwarn com.gemalto.jp2.**
 -dontwarn com.tom_roush.pdfbox.**
 -keep class com.tom_roush.pdfbox.** { *; }
+
+# --- Google API Client & Gmail API ---
+# These are needed to prevent "key error" (IllegalArgumentException) caused by R8 obfuscating model classes
+-keep class com.google.api.client.** { *; }
+-keep interface com.google.api.client.** { *; }
+-dontwarn com.google.api.client.**
+
+-keep class com.google.api.services.gmail.** { *; }
+-keep interface com.google.api.services.gmail.** { *; }
+-dontwarn com.google.api.services.gmail.**
+
+# Keep the annotations used for JSON mapping
+-keepclassmembers class * {
+    @com.google.api.client.util.Key <fields>;
+}
+
+# Keep the types used in the Gmail API models
+-keep class com.google.api.services.gmail.model.** { *; }

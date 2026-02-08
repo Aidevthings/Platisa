@@ -39,6 +39,15 @@ class GmailSyncWorker @AssistedInject constructor(
     override suspend fun doWork(): Result {
         android.util.Log.d("GmailSyncWorker", "=== doWork() STARTED ===")
         android.util.Log.d("GmailSyncWorker", "Worker class: ${this.javaClass.name}")
+        
+        // CRITICAL SAFETY CHECK: Verify GMS availability
+        val gms = com.google.android.gms.common.GoogleApiAvailability.getInstance()
+        val status = gms.isGooglePlayServicesAvailable(applicationContext)
+        if (status != com.google.android.gms.common.ConnectionResult.SUCCESS) {
+            android.util.Log.e("GmailSyncWorker", "❌ ABORTING: Google Play Services unavailable (Code: $status)")
+            return Result.failure(workDataOf(KEY_ERROR_MESSAGE to "Google Play servisi nisu dostupni"))
+        }
+
         android.util.Log.d("GmailSyncWorker", "SyncReceiptsUseCase injected: ${syncReceiptsUseCase != null}")
         
         // Promote to Foreground Service immediately to prevent killing
@@ -118,6 +127,10 @@ class GmailSyncWorker @AssistedInject constructor(
                 append(e.javaClass.simpleName)
                 append(": ")
                 append(e.message ?: "No message")
+                if (e.message?.lowercase()?.contains("key") == true) {
+                    // Include the actual message to help debug WHAT key is missing
+                    append(" [MOGUĆA GREŠKA API KLJUČA: ${e.message}]") 
+                }
                 e.cause?.let { cause ->
                     append(" (Caused by: ${cause.javaClass.simpleName}: ${cause.message})")
                 }

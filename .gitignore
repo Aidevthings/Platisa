@@ -16,6 +16,9 @@
 # Local configuration
 local.properties
 
+# Secrets
+google-services.json
+
 # Build logs and error files
 *.log
 build_*.txt
@@ -39,3 +42,8 @@ latest_compile.txt
 
 # Cleanup scripts (keep in repo but ignore outputs)
 cleanup_output.txt
+# Android Build Artifacts
+/app/release/
+*.aab
+*.apk
+app/release/app-release.aab

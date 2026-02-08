@@ -213,6 +213,17 @@ fun LoginScreen(
                     modifier = Modifier.padding(top = 8.dp)
                 )
 
+                // Gemini Key Build Check
+                if (com.platisa.app.BuildConfig.GEMINI_API_KEY.isBlank()) {
+                    Text(
+                        text = "⚠️ Gemini API Ključ nije pronađen u buildu!",
+                        color = Color.Red,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+
                 Spacer(modifier = Modifier.weight(1f))
 
                 // Login Card

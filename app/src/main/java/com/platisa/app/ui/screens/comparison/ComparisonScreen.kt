@@ -101,10 +101,18 @@ fun ComparisonScreen(
     // Google Scanner function
     val launchGoogleScanner: () -> Unit = {
         if (!isScanning) {
-            isScanning = true
-            scope.launch {
-                try {
-                    val options = com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions.Builder()
+            // Safety Check: Verify GMS is actually available before trying to init client
+            val gms = com.google.android.gms.common.GoogleApiAvailability.getInstance()
+            val status = gms.isGooglePlayServicesAvailable(context)
+            if (status != com.google.android.gms.common.ConnectionResult.SUCCESS) {
+                scope.launch {
+                    SnackbarManager.showMessage("Google Play servisi nisu dostupni.")
+                }
+            } else {
+                isScanning = true
+                scope.launch {
+                    try {
+                        val options = com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions.Builder()
                         .setBarcodeFormats(
                             com.google.mlkit.vision.barcode.common.Barcode.FORMAT_QR_CODE,
                             com.google.mlkit.vision.barcode.common.Barcode.FORMAT_PDF417,
@@ -185,6 +193,7 @@ fun ComparisonScreen(
             }
         }
     }
+}
 
     Box(
         modifier = Modifier.fillMaxSize()

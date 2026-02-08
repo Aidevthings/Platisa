@@ -14,6 +14,7 @@ import kotlinx.coroutines.tasks.await
 object PdfUtils {
 
     private var isInitialized = false
+    private val barcodeScanner by lazy { BarcodeScanning.getClient() }
 
     fun init(context: Context) {
         if (!isInitialized) {
@@ -23,21 +24,18 @@ object PdfUtils {
     }
 
     fun extractText(file: File): String {
+        var document: PDDocument? = null
         return try {
-            val document = PDDocument.load(file)
+            document = PDDocument.load(file)
             val stripper = PDFTextStripper()
-            // CRITICAL FIX: Sort text by visual position (Top-Down, Left-Right)
-            // This prevents "stream order" scrambling where text appears out of layout context.
             stripper.sortByPosition = true
-            // Also helpful for messy PDFs
             stripper.suppressDuplicateOverlappingText = false
-            
-            val text = stripper.getText(document)
-            document.close()
-            text
+            stripper.getText(document)
         } catch (e: Exception) {
             e.printStackTrace()
             ""
+        } finally {
+            try { document?.close() } catch (e: Exception) {}
         }
     }
 
@@ -47,10 +45,9 @@ object PdfUtils {
         // 2. If it fails (or returns null), Fallback to PDFBox (Robust, High Memory)
         
         var bitmap = try {
-            val fileDescriptor = android.os.ParcelFileDescriptor.open(file, android.os.ParcelFileDescriptor.MODE_READ_ONLY)
-            val result = renderToBitmap(fileDescriptor, pageIndex)
-            fileDescriptor.close()
-            result
+            android.os.ParcelFileDescriptor.open(file, android.os.ParcelFileDescriptor.MODE_READ_ONLY).use { fileDescriptor ->
+                renderToBitmap(fileDescriptor, pageIndex)
+            }
         } catch (e: Exception) {
             android.util.Log.w("PdfUtils", "Native PDF Render failed: ${e.message}, trying PDFBox fallback...")
             null
@@ -65,25 +62,25 @@ object PdfUtils {
     }
     
     private fun renderToBitmapPdfBox(file: File, pageIndex: Int): Bitmap? {
+        var document: PDDocument? = null
         return try {
-            val document = PDDocument.load(file)
+            document = PDDocument.load(file)
             if (pageIndex >= document.numberOfPages) {
-                document.close()
                 return null
             }
             
             val renderer = PDFRenderer(document)
             // Scale: 2.0f ~ 144 DPI, 3.0f ~ 216 DPI. Using 2.0f to be safe on memory while good for OCR.
             val bitmap = renderer.renderImage(pageIndex, 2.0f, com.tom_roush.pdfbox.rendering.ImageType.RGB)
-            document.close()
             
             // Ensure ARGB_8888 for ML Kit consistency
             if (bitmap.config != Bitmap.Config.ARGB_8888) {
                 val argb = bitmap.copy(Bitmap.Config.ARGB_8888, false)
                 bitmap.recycle()
-                return argb
+                argb
+            } else {
+                bitmap
             }
-            bitmap
         } catch (e: OutOfMemoryError) {
              android.util.Log.e("PdfUtils", "OOM in PDFBox render", e)
              System.gc()
@@ -91,19 +88,22 @@ object PdfUtils {
         } catch (e: Exception) {
             android.util.Log.e("PdfUtils", "PDFBox Render error", e)
             null
+        } finally {
+            try { document?.close() } catch (e: Exception) {}
         }
     }
 
     fun renderToBitmap(fileDescriptor: android.os.ParcelFileDescriptor, pageIndex: Int = 0): Bitmap? {
+        var pdfRenderer: android.graphics.pdf.PdfRenderer? = null
+        var page: android.graphics.pdf.PdfRenderer.Page? = null
         return try {
-            val pdfRenderer = android.graphics.pdf.PdfRenderer(fileDescriptor)
+            pdfRenderer = android.graphics.pdf.PdfRenderer(fileDescriptor)
             
             if (pageIndex >= pdfRenderer.pageCount) {
-                pdfRenderer.close()
                 return null
             }
             
-            val page = pdfRenderer.openPage(pageIndex)
+            page = pdfRenderer.openPage(pageIndex)
             val width = 1660
             val height = 2340
             
@@ -113,10 +113,6 @@ object PdfUtils {
             canvas.drawColor(android.graphics.Color.WHITE) 
             
             page.render(bitmap, null, null, android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-            
-            page.close()
-            pdfRenderer.close()
-            
             bitmap
         } catch (e: OutOfMemoryError) {
             android.util.Log.e("PdfUtils", "OOM in renderToBitmap", e)
@@ -125,75 +121,71 @@ object PdfUtils {
         } catch (e: Exception) {
             e.printStackTrace()
             null
+        } finally {
+            try { page?.close() } catch (e: Exception) {}
+            try { pdfRenderer?.close() } catch (e: Exception) {}
         }
     }
     
     suspend fun extractQrCode(file: File, pageIndex: Int = 0): String? {
+        var fileDescriptor: android.os.ParcelFileDescriptor? = null
+        var pdfRenderer: android.graphics.pdf.PdfRenderer? = null
+        
         return try {
             android.util.Log.d("PdfUtils", "Extracting QR from PDF (Native): ${file.name}")
             
-            // STRATEGY: Use Android Native PdfRenderer
-            // Optimization: Reduce resolution to ~200 DPI (approx 1660x2340)
-            // Memory: 1660 * 2340 * 2 bytes (RGB_565) = ~7.7 MB (was ~35 MB at 300 DPI)
-            
-            val fileDescriptor = android.os.ParcelFileDescriptor.open(file, android.os.ParcelFileDescriptor.MODE_READ_ONLY)
-            val pdfRenderer = android.graphics.pdf.PdfRenderer(fileDescriptor)
+            fileDescriptor = android.os.ParcelFileDescriptor.open(file, android.os.ParcelFileDescriptor.MODE_READ_ONLY)
+            pdfRenderer = android.graphics.pdf.PdfRenderer(fileDescriptor)
             val pageCount = pdfRenderer.pageCount
             
             val pagesToTry = if (pageCount > 1) listOf(0, 1) else listOf(0)
             
+            var foundQr: String? = null
+            
             for (pageIdx in pagesToTry) {
+                var page: android.graphics.pdf.PdfRenderer.Page? = null
+                var bitmap: Bitmap? = null
                 try {
-                    val page = pdfRenderer.openPage(pageIdx)
+                    page = pdfRenderer.openPage(pageIdx)
                     
-                    // Render at medium-high resolution (~200 DPI)
-                    // At 200 DPI -> 1660 x 2340 pixels
                     val width = 1660
                     val height = 2340
                     
-                    // Optimization: Use ARGB_8888 for better ML Kit compatibility
-                    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                    bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
                     val canvas = android.graphics.Canvas(bitmap)
-                    canvas.drawColor(android.graphics.Color.WHITE) // Ensure white background
+                    canvas.drawColor(android.graphics.Color.WHITE)
                     
-                    // Render
                     page.render(bitmap, null, null, android.graphics.pdf.PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                    page.close() // Close page immediately after render
+                    page.close()
+                    page = null // mark as closed
                     
                     android.util.Log.d("PdfUtils", "Rendered native page $pageIdx ($width x $height)")
                     
-                    // 1. Try scanning the full page (Normal)
-                    var result = scanBitmapWithRetries(bitmap)
+                    val result = scanBitmapWithRetries(bitmap)
                     if (result != null) {
                         android.util.Log.d("PdfUtils", "✅ QR FOUND via Native Renderer!")
-                        fileDescriptor.close()
-                        bitmap.recycle()
-                        return result
+                        foundQr = result
+                        break
                     }
                     
-                    // 2. Try scanning with MANUAL BINARIZATION (Thresholding)
-                    // This removes anti-aliasing gray pixels
                     android.util.Log.d("PdfUtils", "Trying Manual Binarization...")
                     val binarized = binarizeBitmap(bitmap)
-                    result = scanBitmapWithRetries(binarized)
+                    val binarizedResult = scanBitmapWithRetries(binarized)
                     binarized.recycle()
-                    bitmap.recycle()
                     
-                    if (result != null) {
+                    if (binarizedResult != null) {
                         android.util.Log.d("PdfUtils", "✅ QR FOUND via Native Renderer + Binarization!")
-                        fileDescriptor.close()
-                        return result
+                        foundQr = binarizedResult
+                        break
                     }
-                    
                 } catch (e: Exception) {
                     android.util.Log.e("PdfUtils", "Error on page $pageIdx", e)
+                } finally {
+                    try { page?.close() } catch (e: Exception) {}
+                    try { bitmap?.recycle() } catch (e: Exception) {}
                 }
             }
-            
-            pdfRenderer.close()
-            fileDescriptor.close()
-            android.util.Log.w("PdfUtils", "No QR code found")
-            null
+            foundQr
         } catch (e: OutOfMemoryError) {
             android.util.Log.e("PdfUtils", "OOM extracting QR code. Attempting to clear memory.", e)
             System.gc()
@@ -201,6 +193,9 @@ object PdfUtils {
         } catch (e: Exception) {
             android.util.Log.e("PdfUtils", "Error extracting QR code", e)
             null
+        } finally {
+            try { pdfRenderer?.close() } catch (e: Exception) {}
+            try { fileDescriptor?.close() } catch (e: Exception) {}
         }
     }
     
@@ -244,8 +239,7 @@ object PdfUtils {
     private suspend fun scanWithMlKit(bitmap: Bitmap): String? {
         return try {
             val image = InputImage.fromBitmap(bitmap, 0)
-            val scanner = BarcodeScanning.getClient()
-            val barcodes = scanner.process(image).await()
+            val barcodes = barcodeScanner.process(image).await()
             barcodes.firstOrNull()?.rawValue
         } catch (e: Exception) {
             null

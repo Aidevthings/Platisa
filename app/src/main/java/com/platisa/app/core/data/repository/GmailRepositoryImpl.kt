@@ -131,9 +131,7 @@ class GmailRepositoryImpl @Inject constructor(
         return withContext(Dispatchers.IO) {
             try {
                 val file = File(context.cacheDir, "gmail_$filename")
-                val fos = FileOutputStream(file)
-                fos.write(data)
-                fos.close()
+                FileOutputStream(file).use { it.write(data) }
                 file
             } catch (e: Exception) {
                 e.printStackTrace()

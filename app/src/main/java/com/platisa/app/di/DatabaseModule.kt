@@ -13,6 +13,7 @@ import com.platisa.app.core.data.database.MIGRATION_13_14
 import com.platisa.app.core.data.database.MIGRATION_14_15
 import com.platisa.app.core.data.database.MIGRATION_15_16
 import com.platisa.app.core.data.database.MIGRATION_16_17
+import com.platisa.app.core.data.database.MIGRATION_17_18
 import com.platisa.app.core.data.database.PlatisaDatabase
 import com.platisa.app.core.data.database.dao.EpsDao
 import com.platisa.app.core.data.database.dao.ReceiptDao
@@ -48,7 +49,8 @@ object DatabaseModule {
             MIGRATION_13_14,
             MIGRATION_14_15,
             MIGRATION_15_16,
-            MIGRATION_16_17
+            MIGRATION_16_17,
+            MIGRATION_17_18
         )
         .fallbackToDestructiveMigration()
         .build()

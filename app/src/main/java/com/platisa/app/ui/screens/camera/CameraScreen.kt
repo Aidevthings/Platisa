@@ -29,6 +29,8 @@ import androidx.navigation.NavController
 import com.platisa.app.core.common.SnackbarManager
 import com.platisa.app.ui.navigation.Screen
 import kotlinx.coroutines.launch
+import androidx.core.content.ContextCompat
+import android.content.pm.PackageManager
 
 // Colors
 private val BackgroundDark = Color(0xFF0A0A0F)
@@ -43,11 +45,33 @@ fun CameraScreen(
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
-    // Removed unnecessary camera permission state as Google Scanner handles it
+    // Explicit camera permission handling for devices that don't auto-prompt
     var isScanning by remember { mutableStateOf(false) }
     var isProcessing by remember { mutableStateOf(false) }
     var showUrlDialog by remember { mutableStateOf(false) }
     var manualUrlText by remember { mutableStateOf("") }
+    var hasCameraPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.CAMERA
+            ) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        hasCameraPermission = granted
+        if (granted) {
+            // If user grants permission, try scanning immediately.
+            launchGoogleScanner()
+        } else {
+            scope.launch {
+                SnackbarManager.showMessage("Kamera dozvola je potrebna za skeniranje.")
+            }
+        }
+    }
     
     // Gallery launcher
     val galleryLauncher = rememberLauncherForActivityResult(
@@ -63,104 +87,116 @@ fun CameraScreen(
     }
     
     // Google Scanner function
-    val launchGoogleScanner: () -> Unit = {
-        if (!isScanning && !isProcessing) {
-            isScanning = true
+    fun launchGoogleScanner() {
+        if (isScanning || isProcessing) return
+        if (!hasCameraPermission) {
+            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+            return
+        }
+        // Safety Check: Verify GMS is actually available before trying to init client
+        val gms = com.google.android.gms.common.GoogleApiAvailability.getInstance()
+        val status = gms.isGooglePlayServicesAvailable(context)
+        if (status != com.google.android.gms.common.ConnectionResult.SUCCESS) {
             scope.launch {
-                try {
-                    val options = com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions.Builder()
-                        .setBarcodeFormats(
-                            com.google.mlkit.vision.barcode.common.Barcode.FORMAT_QR_CODE,
-                            com.google.mlkit.vision.barcode.common.Barcode.FORMAT_PDF417,
-                            com.google.mlkit.vision.barcode.common.Barcode.FORMAT_DATA_MATRIX
-                        )
-                        .enableAutoZoom()
-                        .build()
-                    
-                    val scanner = com.google.mlkit.vision.codescanner.GmsBarcodeScanning.getClient(context, options)
-                    
-                    scanner.startScan()
-                        .addOnSuccessListener { barcode ->
-                            val rawValue = barcode.rawValue ?: run {
-                                isScanning = false
-                                return@addOnSuccessListener
-                            }
-                            android.util.Log.d("CameraScreen", "Google Scanner detected: $rawValue")
-                            
-                            // Check if IPS payment QR
-                            val ipsData = com.platisa.app.core.data.parser.IpsParser.parse(rawValue)
-                            if (ipsData != null) {
-                                isProcessing = true // Block UI
-                                scope.launch {
-                                    try {
-                                        SnackbarManager.showMessage("IPS račun prepoznat! Čuvam...")
-                                        viewModel.saveIpsBill(ipsData)
-                                        SnackbarManager.showMessage("Račun sačuvan!")
-                                        navController.navigate(Screen.Home.route) {
-                                            popUpTo(Screen.Home.route) { inclusive = true }
-                                        }
-                                    } catch (e: Exception) {
-                                        SnackbarManager.showMessage("Greška: ${e.message}")
-                                    } finally {
-                                        isProcessing = false
-                                    }
-                                }
-                                isScanning = false
-                                return@addOnSuccessListener
-                            }
-                            
-                            // Check if fiscal receipt URL
-                            if (com.platisa.app.core.common.FiscalScraper.isFiscalUrl(rawValue)) {
-                                isProcessing = true // Block UI
-                                scope.launch {
-                                    try {
-                                        SnackbarManager.showMessage("Fiskalni račun prepoznat! Učitavam...")
-                                        val receiptId = viewModel.saveFiscalReceipt(rawValue)
-                                        if (receiptId != null) {
-                                            SnackbarManager.showMessage("Račun sačuvan!")
-                                            navController.navigate(Screen.FiscalReceiptDetails.createRoute(receiptId))
-                                        } else {
-                                            val fallbackId = viewModel.saveFiscalReceiptFallback(rawValue)
-                                            if (fallbackId != null) {
-                                                SnackbarManager.showMessage("Link sačuvan!")
-                                                navController.navigate(Screen.FiscalReceiptDetails.createRoute(fallbackId))
-                                            } else {
-                                                SnackbarManager.showMessage("Greška pri čuvanju")
-                                            }
-                                        }
-                                    } catch (e: Exception) {
-                                        SnackbarManager.showMessage("Greška: ${e.message}")
-                                    } finally {
-                                        isProcessing = false
-                                    }
-                                }
-                            } else {
-                                // Unknown QR code - show message
-                                scope.launch {
-                                    SnackbarManager.showMessage("Nepoznat QR kod")
-                                }
-                            }
+                SnackbarManager.showMessage("Google Play servisi nisu dostupni. Koristite Galeriju.")
+            }
+            return
+        }
+        isScanning = true
+        scope.launch {
+            try {
+                val options = com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions.Builder()
+                    .setBarcodeFormats(
+                        com.google.mlkit.vision.barcode.common.Barcode.FORMAT_QR_CODE,
+                        com.google.mlkit.vision.barcode.common.Barcode.FORMAT_PDF417,
+                        com.google.mlkit.vision.barcode.common.Barcode.FORMAT_DATA_MATRIX
+                    )
+                    .enableAutoZoom()
+                    .build()
+                
+                val scanner = com.google.mlkit.vision.codescanner.GmsBarcodeScanning.getClient(context, options)
+                
+                scanner.startScan()
+                    .addOnSuccessListener { barcode ->
+                        val rawValue = barcode.rawValue ?: run {
                             isScanning = false
+                            return@addOnSuccessListener
                         }
-                        .addOnFailureListener { e ->
-                            android.util.Log.e("CameraScreen", "Google Scanner failed", e)
+                        android.util.Log.d("CameraScreen", "Google Scanner detected: $rawValue")
+                        
+                        // Check if IPS payment QR
+                        val ipsData = com.platisa.app.core.data.parser.IpsParser.parse(rawValue)
+                        if (ipsData != null) {
+                            isProcessing = true // Block UI
                             scope.launch {
-                                // Specific handle for common "Cancelled" or generic errors if needed
-                                SnackbarManager.showMessage("Skeniranje nije uspelo: ${e.localizedMessage ?: "Greška"}")
+                                try {
+                                    SnackbarManager.showMessage("IPS račun prepoznat! Čuvam...")
+                                    viewModel.saveIpsBill(ipsData)
+                                    SnackbarManager.showMessage("Račun sačuvan!")
+                                    navController.navigate(Screen.Home.route) {
+                                        popUpTo(Screen.Home.route) { inclusive = true }
+                                    }
+                                } catch (e: Exception) {
+                                    SnackbarManager.showMessage("Greška: ${e.message}")
+                                } finally {
+                                    isProcessing = false
+                                }
                             }
                             isScanning = false
+                            return@addOnSuccessListener
                         }
-                        .addOnCanceledListener {
-                            isScanning = false
-                            // User cancelled scanning, stay on screen.
+                        
+                        // Check if fiscal receipt URL
+                        if (com.platisa.app.core.common.FiscalScraper.isFiscalUrl(rawValue)) {
+                            isProcessing = true // Block UI
+                            scope.launch {
+                                try {
+                                    SnackbarManager.showMessage("Fiskalni račun prepoznat! Učitavam...")
+                                    val receiptId = viewModel.saveFiscalReceipt(rawValue)
+                                    if (receiptId != null) {
+                                        SnackbarManager.showMessage("Račun sačuvan!")
+                                        navController.navigate(Screen.FiscalReceiptDetails.createRoute(receiptId))
+                                    } else {
+                                        val fallbackId = viewModel.saveFiscalReceiptFallback(rawValue)
+                                        if (fallbackId != null) {
+                                            SnackbarManager.showMessage("Link sačuvan!")
+                                            navController.navigate(Screen.FiscalReceiptDetails.createRoute(fallbackId))
+                                        } else {
+                                            SnackbarManager.showMessage("Greška pri čuvanju")
+                                        }
+                                    }
+                                } catch (e: Exception) {
+                                    SnackbarManager.showMessage("Greška: ${e.message}")
+                                } finally {
+                                    isProcessing = false
+                                }
+                            }
+                        } else {
+                            // Unknown QR code - show message
+                            scope.launch {
+                                SnackbarManager.showMessage("Nepoznat QR kod")
+                            }
                         }
-                } catch (e: Exception) {
-                    SnackbarManager.showMessage("Greška: ${e.message}")
-                    isScanning = false
-                }
+                        isScanning = false
+                    }
+                    .addOnFailureListener { e ->
+                        android.util.Log.e("CameraScreen", "Google Scanner failed", e)
+                        scope.launch {
+                            // Specific handle for common "Cancelled" or generic errors if needed
+                            SnackbarManager.showMessage("Skeniranje nije uspelo: ${e.localizedMessage ?: "Greška"}")
+                        }
+                        isScanning = false
+                    }
+                    .addOnCanceledListener {
+                        isScanning = false
+                        // User cancelled scanning, stay on screen.
+                    }
+            } catch (e: Exception) {
+                SnackbarManager.showMessage("Greška: ${e.message}")
+                isScanning = false
             }
         }
-    }
+}
     
     // Auto-launch scanner ONLY ONCE
     var hasAutoLaunched by rememberSaveable { mutableStateOf(false) }

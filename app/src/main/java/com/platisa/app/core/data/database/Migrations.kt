@@ -96,3 +96,11 @@ val MIGRATION_16_17 = object : Migration(16, 17) {
     }
 }
 
+val MIGRATION_17_18 = object : Migration(17, 18) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        // Dodaj indekse koji su nedostajali u ReceiptEntity
+        database.execSQL("CREATE INDEX IF NOT EXISTS index_receipts_merchantName ON receipts(merchantName)")
+        database.execSQL("CREATE INDEX IF NOT EXISTS index_receipts_date ON receipts(date)")
+    }
+}
+

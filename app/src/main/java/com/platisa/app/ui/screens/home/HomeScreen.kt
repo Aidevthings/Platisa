@@ -999,20 +999,21 @@ fun ModernBillCard(
     modifier: Modifier = Modifier
 ) {
     val customColors = LocalPlatisaColors.current
-    val isDark = isSystemInDarkTheme()
+    val isDark = customColors.isDark
+    val cardBgAlpha = if (isDark) 0.25f else 0.6f
     val (bgColor, borderColor, iconBgColor) = when (receipt.paymentStatus) {
         PaymentStatus.UNPAID -> Triple(
-            customColors.statusUnpaid.copy(alpha = 0.25f),
+            customColors.statusUnpaid.copy(alpha = cardBgAlpha),
             customColors.statusUnpaid.copy(alpha = 0.8f),
             customColors.statusUnpaid.copy(alpha = 0.6f)
         )
         PaymentStatus.PROCESSING -> Triple(
-            customColors.statusProcessing.copy(alpha = 0.25f),
+            customColors.statusProcessing.copy(alpha = cardBgAlpha),
             customColors.statusProcessing.copy(alpha = 0.8f),
             customColors.statusProcessing.copy(alpha = 0.6f)
         )
         PaymentStatus.PAID -> Triple(
-            customColors.statusPaid.copy(alpha = 0.25f),
+            customColors.statusPaid.copy(alpha = cardBgAlpha),
             customColors.statusPaid.copy(alpha = 0.8f),
             customColors.statusPaid.copy(alpha = 0.6f)
         )

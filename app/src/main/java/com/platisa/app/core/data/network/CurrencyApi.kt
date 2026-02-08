@@ -6,7 +6,7 @@ import retrofit2.http.Query
 interface CurrencyApi {
     @retrofit2.http.GET("latest/{base}")
     suspend fun getLatestRate(
-        @retrofit2.http.Path("base") base: String = "EUR"
+        @retrofit2.http.Path("base") base: String
     ): CurrencyResponse
 }
 

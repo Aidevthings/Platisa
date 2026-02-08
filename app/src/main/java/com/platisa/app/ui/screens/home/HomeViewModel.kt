@@ -211,23 +211,30 @@ class HomeViewModel @Inject constructor(
     }
 
     private fun fetchLiveRate() {
-        launchCatching(showLoading = false) {
+        viewModelScope.launch(Dispatchers.IO) {
             val lastFetch = preferenceManager.lastRateFetchTime
             val currentTime = System.currentTimeMillis()
             val CACHE_DURATION = 24 * 60 * 60 * 1000L // 24 hours
 
             if (currentTime - lastFetch > CACHE_DURATION) {
                 try {
-                    val response = currencyApi.getLatestRate()
+                    android.util.Log.d("HomeViewModel", "Fetching live currency rates...")
+                    val response = currencyApi.getLatestRate("EUR")
                     val newRate = response.rates["RSD"]
                     if (newRate != null) {
                         preferenceManager.lastKnownEuroRate = newRate.toFloat()
                         preferenceManager.lastRateFetchTime = currentTime
                         _conversionRate.value = java.math.BigDecimal(newRate)
-                        android.util.Log.d("HomeViewModel", "Live rate fetched: $newRate")
+                        android.util.Log.d("HomeViewModel", "✅ Live rate updated: $newRate")
+                    } else {
+                        android.util.Log.w("HomeViewModel", "⚠️ RSD rate not found in response")
                     }
                 } catch (e: Exception) {
-                    android.util.Log.e("HomeViewModel", "Failed to fetch live rate", e)
+                    // CATCH ALL to prevent ClassCastException from crashing the app
+                    android.util.Log.e("HomeViewModel", "❌ Failed to fetch live rate (likely ProGuard/Network): ${e.message}")
+                    if (e is java.lang.ClassCastException) {
+                        android.util.Log.e("HomeViewModel", "CRITICAL: ProGuard is still stripping type info from CurrencyResponse!")
+                    }
                 }
             } else {
                  android.util.Log.d("HomeViewModel", "Using cached rate: ${preferenceManager.lastKnownEuroRate}")
@@ -236,7 +243,17 @@ class HomeViewModel @Inject constructor(
     }
 
     private fun checkConnectedAccount() {
-        _connectedAccount.value = com.google.android.gms.auth.api.signin.GoogleSignIn.getLastSignedInAccount(context)
+        try {
+            val gms = com.google.android.gms.common.GoogleApiAvailability.getInstance()
+            val status = gms.isGooglePlayServicesAvailable(context)
+            if (status == com.google.android.gms.common.ConnectionResult.SUCCESS) {
+                _connectedAccount.value = com.google.android.gms.auth.api.signin.GoogleSignIn.getLastSignedInAccount(context)
+            } else {
+                android.util.Log.w("HomeViewModel", "GMS not available ($status), skipping account check.")
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("HomeViewModel", "Error checking connected account: ${e.message}")
+        }
     }
 
     fun setConnectedAccount(email: String) {

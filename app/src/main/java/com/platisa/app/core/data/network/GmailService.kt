@@ -13,9 +13,18 @@ import kotlinx.coroutines.withContext
 import java.util.Collections
 
 class GmailService(private val context: Context) {
-
+    
+    companion object {
+        private val HTTP_TRANSPORT = NetHttpTransport()
+        private val JSON_FACTORY = GsonFactory.getDefaultInstance()
+        private val serviceCache = mutableMapOf<String, Gmail>()
+    }
+    
     private fun getGmailService(account: GoogleSignInAccount): Gmail {
-        android.util.Log.d("GmailService", "Creating Gmail service for account: ${account.email}")
+        val email = account.email ?: "unknown"
+        serviceCache[email]?.let { return it }
+        
+        android.util.Log.d("GmailService", "Creating NEW Gmail service for account: $email")
         
         if (account.account == null) {
             android.util.Log.e("GmailService", "account.account is NULL! Google Sign-In may not be properly configured.")
@@ -27,13 +36,16 @@ class GmailService(private val context: Context) {
         )
         credential.selectedAccount = account.account
 
-        return Gmail.Builder(
-            NetHttpTransport(),
-            GsonFactory.getDefaultInstance(),
+        val service = Gmail.Builder(
+            HTTP_TRANSPORT,
+            JSON_FACTORY,
             credential
         )
             .setApplicationName("Platisa")
             .build()
+            
+        serviceCache[email] = service
+        return service
     }
 
     suspend fun listMessages(
@@ -85,7 +97,7 @@ class GmailService(private val context: Context) {
                 val part = service.users().messages().attachments().get("me", messageId, attachmentId).execute()
                 part.decodeData()
             } catch (e: Exception) {
-                e.printStackTrace()
+                android.util.Log.e("GmailService", "ERROR: Failed to download attachment $attachmentId for message $messageId", e)
                 null
             }
         }

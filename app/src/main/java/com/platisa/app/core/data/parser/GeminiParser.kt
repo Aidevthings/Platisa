@@ -67,8 +67,7 @@ object GeminiParser {
                 }
             } catch (e: Exception) {
                 android.util.Log.e("GeminiParser", "Error parsing with Gemini", e)
-                e.printStackTrace()
-                null
+                throw e // Propagate to caller for better error visibility
             }
         }
     }
