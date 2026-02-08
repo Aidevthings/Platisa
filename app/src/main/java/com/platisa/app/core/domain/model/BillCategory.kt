@@ -11,10 +11,10 @@ enum class BillCategory(val icon: ImageVector, val color: Color, val displayName
     WATER(Icons.Default.WaterDrop, DeepCyan, "Voda"),
     TELECOM(Icons.Default.Phone, NeonPurple, "Telefon"),
     GAS(Icons.Default.LocalFireDepartment, DeepOrange, "Gas"),
-    GROCERY(Icons.Default.ShoppingCart, Color(0xFF4CAF50), "Namirnice"),
+    GROCERY(Icons.Default.ShoppingCart, DeepGreen, "Namirnice"),
     PHARMACY(Icons.Default.LocalHospital, Color(0xFFE91E63), "Apoteka"),
     RESTAURANT(Icons.Default.Restaurant, Color(0xFFFF9800), "Restorani"), // Orange
-    UTILITIES(Icons.Default.LocationCity, Color(0xFF607D8B), "Komunalije"), // BlueGrey
+    UTILITIES(Icons.Default.LocationCity, CyberCyan, "Komunalije"),
     OTHER(Icons.Default.Receipt, MatrixGreen, "Ostalo")
 }
 

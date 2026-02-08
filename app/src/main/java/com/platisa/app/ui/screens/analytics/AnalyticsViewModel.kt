@@ -74,6 +74,15 @@ class AnalyticsViewModel @Inject constructor(
     private val _selectedGraphPeriod = kotlinx.coroutines.flow.MutableStateFlow(GraphPeriod.SIX_MONTHS)
     val selectedGraphPeriod: StateFlow<GraphPeriod> = _selectedGraphPeriod.asStateFlow()
 
+    private val _chartType = kotlinx.coroutines.flow.MutableStateFlow(
+        try {
+            ChartType.valueOf(preferenceManager.analyticsChartType)
+        } catch (_: Exception) {
+            ChartType.LINE
+        }
+    )
+    val chartType: StateFlow<ChartType> = _chartType.asStateFlow()
+
     fun setCurrency(newCurrency: String) {
         _currency.value = newCurrency
         vibrationHelper.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
@@ -93,6 +102,12 @@ class AnalyticsViewModel @Inject constructor(
     
     fun setGraphPeriod(period: GraphPeriod) {
         _selectedGraphPeriod.value = period
+        vibrationHelper.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
+    }
+
+    fun setChartType(type: ChartType) {
+        _chartType.value = type
+        preferenceManager.analyticsChartType = type.name
         vibrationHelper.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
     }
 

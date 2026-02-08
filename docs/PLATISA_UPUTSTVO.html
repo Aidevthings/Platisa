@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="sr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Platiša - Korisničko Uputstvo</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        h1,
+        h2,
+        h3,
+        h4 {
+            color: #2c3e50;
+        }
+
+        h1 {
+            border-bottom: 2px solid #eee;
+            padding-bottom: 10px;
+        }
+
+        h2 {
+            border-bottom: 1px solid #eee;
+            padding-bottom: 5px;
+            margin-top: 30px;
+        }
+
+        code {
+            background-color: #f8f9fa;
+            padding: 2px 4px;
+            border-radius: 4px;
+            font-family: Consolas, monospace;
+            font-size: 0.9em;
+        }
+
+        pre {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+
+        .note {
+            background-color: #e3f2fd;
+            border-left: 5px solid #2196f3;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+
+        .mermaid {
+            margin: 30px auto;
+            text-align: center;
+        }
+
+        ul,
+        ol {
+            margin-bottom: 15px;
+        }
+
+        li {
+            margin-bottom: 5px;
+        }
+
+        @media print {
+            body {
+                max-width: 100%;
+                padding: 0;
+            }
+
+            .no-print {
+                display: none;
+            }
+
+            a {
+                text-decoration: none;
+                color: #333;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>Platiša - Tehničko Uputstvo i Korisnički Vodič</h1>
+
+    <div class="note">
+        <strong>NAPOMENA:</strong> Ovaj dokument služi kao detaljno korisničko uputstvo i tehnički vodič za Android
+        aplikaciju Platiša. Može se odštampati u PDF formatu.
+    </div>
+
+    <h2>1. Pregled Sistema</h2>
+    <p><strong>Platiša</strong> je sofisticirana aplikacija za lične finansije, prilagođena tržištu Srbije, dizajnirana
+        da automatizuje praćenje i upravljanje kućnim računima (struja, voda, telefon, internet). Koristi napredne
+        tehnologije kao što su OCR (Optičko prepoznavanje znakova), mašinsko učenje i Cloud sinhronizacija kako bi
+        fizičke ili digitalne račune pretvorila u strukturirane i korisne podatke.</p>
+
+    <h3>Osnovna Arhitektura</h3>
+    <p>Aplikacija prati principe <strong>Clean Architecture</strong> u kombinaciji sa <strong>MVVM
+            (Model-View-ViewModel)</strong> obrascem.</p>
+    <ul>
+        <li><strong>UI Sloj (Prezentacija)</strong>: Izgrađen u potpunosti koristeći <strong>Jetpack Compose</strong>
+            (Material 3). Posmatra stanje iz ViewModel-a i iscrtava interfejs.</li>
+        <li><strong>Domain Sloj (Poslovna Logika)</strong>: Sadrži Use Cases (<code>SyncReceiptsUseCase</code>,
+            <code>ScanReceiptUseCase</code>) i čistu poslovnu logiku. Ovaj sloj je nezavisan od Android framework-a.
+        </li>
+        <li><strong>Data Sloj (Perzistencija i Mreža)</strong>: Upravlja izvorima podataka uključujući <strong>Room
+                Bazu</strong> (lokalno SQL skladište), <strong>DataStore</strong> (podešavanja), <strong>Firebase
+                Firestore</strong> (cloud sinhronizacija statusa plaćanja) i <strong>Gmail API</strong> (preuzimanje
+            računa).</li>
+    </ul>
+
+    <hr>
+
+    <h2>2. Korisničko Uputstvo (Funkcionalni Vodič)</h2>
+
+    <h3>2.1 Prvi Koraci i Identitet</h3>
+    <ul>
+        <li><strong>Google Prijava</strong>: Aplikacija zahteva Google nalog za funkcionisanje. Ovo obezbeđuje siguran
+            identitet za sinhronizaciju računa i "backup" statusa plaćanja.</li>
+        <li><strong>Prilagođavanje Profila</strong>:
+            <ul>
+                <li><strong>Ime</strong>: Korisnici mogu postaviti ime za prikaz.</li>
+                <li><strong>Avatar</strong>: Podržava tri izvora:
+                    <ol>
+                        <li><strong>Galerija</strong>: Odabir postojeće fotografije.</li>
+                        <li><strong>Kamera</strong>: Snimanje specijalizovanog "Selfija" unutar aplikacije.</li>
+                        <li><strong>Predefinisani Avatari</strong>: Odabir iz biblioteke ugrađenih avatara.</li>
+                    </ol>
+                </li>
+                <li><strong>Početni Ekran</strong>: Korisnici mogu prilagoditi estetiku pokretanja aplikacije odabirom
+                    različitih pozadinskih vizuala (Splash Screen).</li>
+            </ul>
+        </li>
+    </ul>
+
+    <h3>2.2 Početni Ekran (Dashboard)</h3>
+    <p>Centralni deo aplikacije.</p>
+    <ul>
+        <li><strong>Mesečni Pregled</strong>: Prikazuje ukupne akumulirane račune za tekući mesec.</li>
+        <li><strong>Lista Računa</strong>: Prikazuje listu skeniranih računa, kategorisanih po trgovcu (EPS, Infostan,
+            Telekom, itd.).</li>
+        <li><strong>Indikatori Statusa</strong>:
+            <ul>
+                <li>🟢 <strong>PLAĆENO</strong>: Račun je označen kao plaćen.</li>
+                <li>🔴 <strong>NIJE PLAĆENO</strong>: Račun čeka na plaćanje.</li>
+                <li>⚠️ <strong>ISTEKLO</strong>: Rok za plaćanje je prošao.</li>
+            </ul>
+        </li>
+    </ul>
+
+    <h3>2.3 Dodavanje Računa</h3>
+    <p>Postoje tri načina za dodavanje računa u Platišu:</p>
+    <ol>
+        <li><strong>Skeniranje Kamerom</strong>: Usmerite kameru ka fizičkom papirnom računu. Aplikacija detektuje IPS
+            QR kod ili koristi OCR za čitanje teksta.</li>
+        <li><strong>Uvoz iz Galerije</strong>: Odaberite sliku ili PDF iz memorije telefona.</li>
+        <li><strong>Gmail Sinhronizacija</strong>: Aplikacija se povezuje sa vašim Gmail nalogom (putem
+            <code>GmailSyncWorker</code>) i traži priloge od poznatih izdavalaca (npr. <code>racun@eps.rs</code>,
+            <code>racun@mts.rs</code>).
+        </li>
+    </ol>
+
+    <h3>2.4 Upravljanje Računima</h3>
+    <ul>
+        <li><strong>Detaljan Prikaz</strong>: Dodirom na račun otvaraju se detalji:
+            <ul>
+                <li><strong>Raščlanjivanje iznosa</strong> (Tekuće zaduženje vs. Prethodni dug).</li>
+                <li><strong>Podaci o potrošnji</strong> (za EPS struju: VT/NT).
+                <li><strong>Grafikoni</strong>: Istorijat troškova za tog konkretnog trgovca.</li>
+            </ul>
+        </li>
+        <li><strong>Označi kao Plaćeno</strong>: Korisnici mogu ručno promeniti status. Ovaj status se sinhronizuje sa
+            oblakom (Firestore) tako da se reflektuje na svim uređajima prijavljenim na isti nalog.</li>
+        <li><strong>Deli</strong>: Izvoz podataka o računu kao tekst ili slika za arhiviranje ili deljenje.</li>
+    </ul>
+
+    <h3>2.5 Podešavanja i Alati</h3>
+    <ul>
+        <li><strong>Teme</strong>: Prebacivanje između Svetle, Tamne ili Sistemske teme.</li>
+        <li><strong>Obaveštenja</strong>: Konfigurisanje podsetnika za datume dospeća (3 dana pre, 1 dan pre).</li>
+        <li><strong>Upravljanje Podacima</strong>:
+            <ul>
+                <li><strong>Izvoz</strong>: Generisanje CSV ili PDF izveštaja svih računa.</li>
+                <li><strong>Resetovanje</strong>: Brisanje svih lokalnih podataka ili specifično resetovanje istorije
+                    Gmail sinhronizacije.</li>
+            </ul>
+        </li>
+        <li><strong>Dijagnostika</strong>: Skriveni meni za logove otklanjanja grešaka, logiku sinhronizacije i potpise
+            aplikacije.</li>
+    </ul>
+
+    <hr>
+
+    <h2>3. Tehnički Pregled (Vodič za Inženjere)</h2>
+
+    <h3>3.1 Modeli Podataka i Identitet</h3>
+
+    <h4>Entitet <code>Receipt</code> (Račun)</h4>
+    <p>Osnovna struktura podataka koja predstavlja jedan račun. Ključna polja uključuju:</p>
+    <ul>
+        <li><code>id</code>: Interni ID baze podataka (Auto-increment).</li>
+        <li><code>deterministicId</code>: Jedinstveni string generisan iz sadržaja računa
+            (<code>BrojRacuna + Datum + Iznos</code>). Ovo osigurava da ako se isti račun skenira kamerom i kasnije
+            pronađe na Gmail-u, oni se rešavaju kao <strong>ISTI</strong> entitet.</li>
+        <li><code>merchantName</code>: Normalizovano ime izdavaoca računa (npr. "EPS DISTRIBUCIJA").</li>
+        <li><code>totalAmount</code>: Konačan iznos za uplatu.</li>
+        <li><code>currentMonthAmount</code>: Pametno parsiran iznos za <em>potrošnju u ovom mesecu</em>, odvojen od
+            starog duga.</li>
+    </ul>
+
+    <h4>Entitet <code>EpsData</code></h4>
+    <p>Specijalizovano proširenje za račune EPS-a (Elektroprivreda Srbije).</p>
+    <ul>
+        <li><code>consumptionVt</code> / <code>consumptionNt</code>: Potrošnja u višoj/nižoj tarifi (kWh).</li>
+        <li><code>discountThresholdAmount</code>: Iznos potreban za ostvarivanje popusta od 5%.</li>
+        <li><code>naplatniBroj</code>: Jedinstveni broj brojila/mernog mesta.</li>
+    </ul>
+
+    <h3>3.2 Osnovni Algoritmi</h3>
+
+    <h4>A. OCR i Parsiranje (<code>ReceiptParser.kt</code>)</h4>
+    <p>Aplikacija koristi višestepeni proces parsiranja:</p>
+    <ol>
+        <li><strong>Ekstrakcija Teksta</strong>: Google ML Kit Vision izvlači sirovi tekst iz slika.</li>
+        <li><strong>Regex Hijerarhije</strong>:
+            <ul>
+                <li><strong>Standardni Obrazac</strong>: Traži linije <code>Cena Količina Ukupno</code>.</li>
+                <li><strong>QXP Obrazac</strong>: Traži linije <code>Količina x Cena Ukupno</code>.</li>
+                <li><strong>Parsiranje Zaglavlja</strong>: Imena trgovaca se identifikuju putem poznatih ključnih reči
+                    ili stroge analize zaglavlja.</li>
+            </ul>
+        </li>
+        <li><strong>Logika Specifična za Trgovce</strong>:
+            <ul>
+                <li><strong>Infostan</strong>: Specifično traži "Identifikacioni broj" i "Opština".</li>
+                <li><strong>Telekom/MTS</strong>: Parsira specifične formate adresa u 3 reda.</li>
+            </ul>
+        </li>
+        <li><strong>Podrška za Srpski Jezik</strong>: Transparentno rukuje i ćirilicom (<code>Рачун</code>) i latinicom
+            (<code>Račun</code>) koristeći mape normalizacije.</li>
+    </ol>
+
+    <h4>B. Gmail Sinhronizacija (<code>SyncReceiptsUseCase.kt</code>)</h4>
+    <ul>
+        <li><strong>OAuth Integracija</strong>: Koristi Google Sign-In sa dozvolama za čitanje email-ova (read-only).
+        </li>
+        <li><strong>Filtriranje Priloga</strong>:
+            <ul>
+                <li>Preuzima PDF priloge.</li>
+                <li><strong>Filter Izvoda Banke</strong>: Agresivno blokira fajlove koji sadrže ključne reči poput
+                    "Izvod", "Stanje na dan" kako bi sprečio da se izvodi iz banke parsiraju kao računi.</li>
+            </ul>
+        </li>
+        <li><strong>Obrada PDF-a</strong>:
+            <ul>
+                <li>Pokušava da izvuče strogi sirovi tekst iz PDF-a.</li>
+                <li>Ako to ne uspe (PDF koji je samo slika), renderuje stranice u Bitmap-e i pokreće OCR.</li>
+                <li><strong>IPS QR Ekstrakcija</strong>: Koristi nativnu analizu PDF-a da pronađe IPS QR kod direktno.
+                </li>
+            </ul>
+        </li>
+    </ul>
+
+    <h4>C. Mehanizam Deduplikacije (<code>BillDuplicateDetector.kt</code>)</h4>
+    <p>Sprečava gomilanje istih računa u listi.</p>
+    <ul>
+        <li><strong>Pravilo "Highlander"</strong>: "Može postojati samo jedan." Za račune sa istim
+            <code>NaplatniBroj</code> i <code>BillingPeriod</code>, samo jedan je vidljiv.
+        </li>
+        <li><strong>Sistem Bodovanja</strong>: Kada se pronađu duplikati, oni se rangiraju:
+            <ol>
+                <li><strong>PLAĆENO</strong> status (+100 poena) - Plaćen račun je uvek bolji.</li>
+                <li><strong>Korekcija</strong> (+50 poena) - Račun označen kao "IS_CORRECTION" zamenjuje originale.</li>
+                <li><strong>QR Kod</strong> (+30 poena) - Skenovi sa QR kodom su pouzdaniji od čistog OCR-a.</li>
+                <li><strong>Dužina Broja Računa</strong> (+10 poena) - Duži/kompletniji brojevi se preferiraju.</li>
+            </ol>
+        </li>
+        <li><strong>Storno Logika</strong>: Ako se pronađe "Storno" račun, on automatski "sakriva" odgovarajući
+            originalni račun I samog sebe, efektivno uklanjajući pogrešno zaduženje iz UI-a.</li>
+    </ul>
+
+    <h4>D. Detekcija Anomalija (<code>BillAnomalyDetector</code>)</h4>
+    <p>Zaštita korisnika od grešaka.</p>
+    <ul>
+        <li><strong>Nagli Pad</strong>: Ako je račun >50% manji od tromesečnog proseka, označava se kao potencijalna
+            greška parsiranja (ili delimičan sken).</li>
+        <li><strong>Upozorenje na Skok</strong>: Ako je račun >200% veći od proseka, korisnik se upozorava (potencijalno
+            curenje vode ili sezonski skok).</li>
+    </ul>
+
+    <h3>3.3 Izrada i Isporuka (Build & Deployment)</h3>
+    <ul>
+        <li><strong>Sistem Izrade</strong>: Gradle sa Kotlin DSL (<code>build.gradle.kts</code>).</li>
+        <li><strong>Dependency Injection</strong>: Hilt/Dagger za upravljanje komponentama.</li>
+        <li><strong>Ključna Komanda za Debug</strong>:
+            <pre>./gradlew assembleDebug</pre>
+            Ovo kompajlira aplikaciju i generiše APK za testiranje.
+        </li>
+        <li><strong>Potpis Aplikacije</strong>: Aplikacija loguje hash svog sertifikata pri pokretanju (vidljivo u
+            <code>DiagnosticsHelper</code>) kako bi se olakšala konfiguracija Firebase/Google API-ja.
+        </li>
+    </ul>
+
+    <hr>
+
+    <h2>4. Vizuelna Arhitektura</h2>
+
+    <h3>4.1 Dijagram Toka Podataka</h3>
+    <p>Prikaz kako podaci teku od korisnika/Gmail-a do baze podataka i ekrana.</p>
+
+    <div class="mermaid">
+        graph TD
+        classDef source fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
+        classDef process fill:#fff3e0,stroke:#e65100,stroke-width:2px;
+        classDef store fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px;
+        classDef ui fill:#f3e5f5,stroke:#4a148c,stroke-width:2px;
+
+        User(Korisnik):::source
+        Gmail(Gmail API):::source
+
+        User -->|Slikaj| Camera[Kamera - Pregled]:::process
+        Gmail -->|Preuzmi| Worker[GmailSyncWorker]:::process
+
+        subgraph Procesni Pipeline
+        Camera --> OCR[ML Kit Prepoznavanje Teksta]:::process
+        Worker --> Filter[Filter Izvoda Banke]
+        Filter --> PDF[PDF Parser/Renderer]
+        PDF --> OCR
+
+        OCR --> Parser[ReceiptParser Regex]:::process
+        Parser --> Normalizer[Srpski Normalizator]
+        Normalizer --> Dedup[Detektor Duplikata]:::process
+        end
+
+        Dedup -->|Izračunaj Skor| DB[(Room Baza)]:::store
+
+        subgraph Skladiste i Sinhronizacija
+        DB <-->|Čitaj/Piši| Repo[ReceiptRepository]:::store
+            Repo <-->|Sinhronizuj Status| Fire[(Firestore)]:::store
+                end
+
+                Repo --> ANOM[Detektor Anomalija]:::process
+                ANOM --> ViewModel[MainViewModel / HomeViewModel]:::ui
+                ViewModel --> UI[Jetpack Compose UI]:::ui
+    </div>
+
+    <h3>4.2 Graf Navigacije</h3>
+    <p>Ovaj dijagram prikazuje strukturu ekrana i navigaciju unutar aplikacije.</p>
+
+    <div class="mermaid">
+        graph TD
+        classDef screen fill:#fce4ec,stroke:#880e4f,stroke-width:2px;
+        classDef logic fill:#e0f2f1,stroke:#004d40,stroke-width:1px;
+
+        Splash[Splash Ekran]:::screen --> Greetings[Pozdravni Ekran]:::screen
+        Greetings --> Login[Prijava/Auth]:::screen
+        Login --> Setup[Podešavanje Skeniranja]:::screen
+        Setup --> Home[Početni Ekran]:::screen
+
+        Home --> Details[Detalji Računa]:::screen
+        Home --> Camera[Kamera Skeniranje]:::screen
+        Home --> Settings[Podešavanja]:::screen
+        Home --> Analytics[Analiza]:::screen
+
+        Settings --> Profile[Profil i Avatar]:::screen
+        Settings --> Diagnostics[Dijagnostika]:::screen
+
+        Details --> Review[Pregled Računa]:::screen
+    </div>
+
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+        mermaid.initialize({ startOnLoad: true });
+    </script>
+</body>
+
+</html>

@@ -17,6 +17,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.activity.viewModels
+import androidx.lifecycle.viewModelScope
+import com.platisa.app.core.domain.repository.ReceiptRepository
+import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
 @androidx.compose.material3.ExperimentalMaterial3Api
@@ -91,9 +94,16 @@ class MainActivity : BaseActivity() {
 @dagger.hilt.android.lifecycle.HiltViewModel
 class MainViewModel @javax.inject.Inject constructor(
     private val preferenceManager: com.platisa.app.core.data.preferences.PreferenceManager,
-    private val vibrationHelper: com.platisa.app.core.common.VibrationHelper
+    private val vibrationHelper: com.platisa.app.core.common.VibrationHelper,
+    private val receiptRepository: ReceiptRepository
 ) : androidx.lifecycle.ViewModel() {
     val isDarkTheme = preferenceManager.themeFlow
+    
+    init {
+        viewModelScope.launch {
+            receiptRepository.startRealTimeSync()
+        }
+    }
     
     fun vibrate(type: com.platisa.app.core.common.VibrationHelper.HapticType = com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT) {
         vibrationHelper.vibrate(type)

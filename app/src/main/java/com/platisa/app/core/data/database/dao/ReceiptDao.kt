@@ -29,6 +29,9 @@ interface ReceiptDao {
 
     @Query("SELECT * FROM receipts WHERE id = :id")
     suspend fun getReceiptById(id: Long): ReceiptEntity?
+    
+    @Query("SELECT * FROM receipts WHERE id = :id")
+    fun getReceiptByIdFlow(id: Long): Flow<ReceiptEntity?>
 
     @Query("SELECT * FROM receipts WHERE invoiceNumber = :invoiceNumber LIMIT 1")
     suspend fun getReceiptByInvoiceNumber(invoiceNumber: String): ReceiptEntity?
@@ -133,6 +136,9 @@ interface ReceiptDao {
     @Query("UPDATE receipts SET paymentStatus = 'PAID', updatedAt = :timestamp, metadata = metadata || ' [Sync:Paid]' WHERE externalId IN (:ids) AND paymentStatus != 'PAID'")
     suspend fun markAsPaid(ids: List<String>, timestamp: Long = System.currentTimeMillis())
 
+    @Query("UPDATE receipts SET paymentStatus = 'PROCESSING', updatedAt = :timestamp, metadata = metadata || ' [Sync:Processing]' WHERE externalId IN (:ids) AND paymentStatus != 'PAID'")
+    suspend fun markAsProcessing(ids: List<String>, timestamp: Long = System.currentTimeMillis())
+
     // UNPAID SYNC: Strict scoping to avoid race conditions. 
     // Only unmark bills that clearly belong to this source (prevents wiping other people's payments)
     @Query("UPDATE receipts SET paymentStatus = 'UNPAID', updatedAt = :timestamp, metadata = metadata || ' [Sync:Unpaid]' WHERE externalId NOT IN (:ids) AND sourceEmail = :sourceEmail AND externalId IS NOT NULL AND paymentStatus = 'PAID'")
@@ -141,6 +147,9 @@ interface ReceiptDao {
     // SAFE SYNC HELPERS (v2)
     @Query("SELECT externalId FROM receipts WHERE sourceEmail = :sourceEmail AND paymentStatus = 'PAID' AND externalId IS NOT NULL")
     suspend fun getPaidExternalIdsBySource(sourceEmail: String): List<String>
+
+    @Query("SELECT externalId FROM receipts WHERE sourceEmail = :sourceEmail AND paymentStatus = 'PROCESSING' AND externalId IS NOT NULL")
+    suspend fun getProcessingExternalIdsBySource(sourceEmail: String): List<String>
 
     @Query("UPDATE receipts SET paymentStatus = 'UNPAID', updatedAt = :timestamp, metadata = metadata || ' [Sync:Unpaid]' WHERE externalId IN (:ids)")
     suspend fun markAsUnpaidByIds(ids: List<String>, timestamp: Long = System.currentTimeMillis())

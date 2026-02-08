@@ -13,6 +13,7 @@ interface ReceiptRepository {
     fun getReceiptsByFilter(startDate: Long, endDate: Long, minAmount: Double, maxAmount: Double): Flow<List<Receipt>>
     suspend fun getReceiptsInRange(startDate: Long, endDate: Long): List<Receipt>
     suspend fun getReceiptById(id: Long): Receipt?
+    fun observeReceiptById(id: Long): Flow<Receipt?>
     suspend fun getReceiptByInvoiceNumber(invoiceNumber: String): Receipt?  // For deduplication
     suspend fun getReceiptsByAmount(amount: java.math.BigDecimal): List<Receipt> // For fuzzy deduplication
     suspend fun insertReceipt(receipt: Receipt, billingPeriod: String? = null): Long
@@ -57,6 +58,8 @@ interface ReceiptRepository {
     
     // Testing / Maintenance
     suspend fun deleteAllPaidStatuses(sourceEmail: String)
+    suspend fun tryAcquireProcessingLock(receipt: Receipt): Boolean
+    suspend fun releaseProcessingLock(receipt: Receipt): Boolean
     
     // Real-time Sync
     suspend fun startRealTimeSync()

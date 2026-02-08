@@ -542,7 +542,7 @@ fun SpendingTrendsChartV2(
     selectedPeriod: GraphPeriod,
     viewModel: AnalyticsViewModel
 ) {
-    var chartType by remember { mutableStateOf(ChartType.LINE) }
+    val chartType by viewModel.chartType.collectAsState()
     // Use LocalPlatisaColors.isDark for consistent in-app theme state
     val isDark = LocalPlatisaColors.current.isDark
 
@@ -587,8 +587,7 @@ fun SpendingTrendsChartV2(
                                 else Color.Black.copy(alpha = 0.05f)
                             )
                             .clickable { 
-                                chartType = ChartType.LINE 
-                                viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
+                                viewModel.setChartType(ChartType.LINE)
                             }
                             .padding(8.dp)
                     ) {
@@ -610,8 +609,7 @@ fun SpendingTrendsChartV2(
                                 else Color.Black.copy(alpha = 0.05f)
                             )
                             .clickable { 
-                                chartType = ChartType.BAR 
-                                viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
+                                viewModel.setChartType(ChartType.BAR)
                             }
                             .padding(8.dp)
                     ) {

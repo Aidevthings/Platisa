@@ -29,11 +29,13 @@ object EpsParser {
         val currentAmount = extractCurrentMonthAmount(normalizedText)
         val previousDebt = extractPreviousDebt(normalizedText)
         val totalPayAmount = extractTotalPayAmount(normalizedText)
+        val electricityBaseCost = extractElectricityBaseCost(normalizedText, totalPayAmount, currentAmount)
         
         android.util.Log.d("EpsParser", "=== SMART PARSING RESULT ===")
         android.util.Log.d("EpsParser", "Current Month Amount: $currentAmount")
         android.util.Log.d("EpsParser", "Previous Debt: $previousDebt")
         android.util.Log.d("EpsParser", "Total Pay Amount: $totalPayAmount")
+        android.util.Log.d("EpsParser", "Electricity Base Cost: $electricityBaseCost")
         
         // Extract payment ID fields
         val naplatniBroj = extractNaplatniBroj(normalizedText)
@@ -119,7 +121,7 @@ object EpsParser {
             currentMonthAmount = currentAmount,
             previousDebtAmount = previousDebt,
             totalPayAmount = totalPayAmount,
-            electricityBaseCost = null, // No longer scanning page 2
+            electricityBaseCost = electricityBaseCost,
             discountDeadline = null,
             discountThresholdAmount = null,
             discountThresholdMessage = null
@@ -207,6 +209,98 @@ object EpsParser {
             }
         }
         return null
+    }
+
+    /**
+     * Extracts base electricity cost (used for discount calculation).
+     * This should reflect the "electricity energy" subtotal, without taxes/fees.
+     */
+    private fun extractElectricityBaseCost(
+        text: String,
+        totalPayAmount: BigDecimal?,
+        currentMonthAmount: BigDecimal?
+    ): BigDecimal? {
+        val upperLimit = listOfNotNull(currentMonthAmount, totalPayAmount).minOrNull()
+        val amountRegex = Regex("""(\d{1,3}(?:[.\s]\d{3})*[.,]\d{2}|\d+[.,]\d{2})""")
+
+        // High-priority direct patterns (same-line capture)
+        val directPatterns = listOf(
+            // Exact EPS base-cost line (highest priority)
+            Regex(
+                """ZADU[ŽZ]ENJE\s+ZA\s+ELEKTRI[ČC]NU\s+ENERGIJU\s+U\s+OBRA[ČC]UNSKOM\s+PERIODU.*?([\d.,]+)""",
+                setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)
+            ),
+            Regex(
+                """ЗАДУЖЕЊЕ\s+ЗА\s+ЕЛЕКТРИЧНУ\s+ЕНЕРГИЈУ\s+У\s+ОБРАЧУНСКОМ\s+ПЕРИОДУ.*?([\d.,]+)""",
+                setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)
+            ),
+            // Latin
+            Regex("""(?:UKUPNO|SVEGA)?\s*ZA\s+ELEKTRI[ČC]NU\s+ENERGIJU.*?([\d.,]+)""", RegexOption.IGNORE_CASE),
+            Regex("""ZA\s+ELEKTRI[ČC]NU\s+ENERGIJU.*?\(A\+B\).*?([\d.,]+)""", RegexOption.IGNORE_CASE),
+            Regex("""ELEKTRI[ČC]NA\s+ENERGIJA.*?([\d.,]+)""", RegexOption.IGNORE_CASE),
+            Regex("""OBRA[ČC]UNSKO?M\s+PERIODU.*?([\d.,]+)""", RegexOption.IGNORE_CASE),
+            // Cyrillic
+            Regex("""(?:УКУПНО|СВЕГА)?\s*ЗА\s+ЕЛЕКТРИЧНУ\s+ЕНЕРГИЈУ.*?([\d.,]+)""", RegexOption.IGNORE_CASE),
+            Regex("""ЗА\s+ЕЛЕКТРИЧНУ\s+ЕНЕРГИЈУ.*?\(A\+B\).*?([\d.,]+)""", RegexOption.IGNORE_CASE),
+            Regex("""ЕЛЕКТРИЧНА\s+ЕНЕРГИЈА.*?([\d.,]+)""", RegexOption.IGNORE_CASE),
+            Regex("""ОБРАЧУНСКОМ\s+ПЕРИОДУ.*?([\d.,]+)""", RegexOption.IGNORE_CASE)
+        )
+
+        for (regex in directPatterns) {
+            val match = regex.find(text)
+            if (match != null) {
+                val amountStr = amountRegex.find(match.value)?.value
+                val amount = parseAmount(amountStr)
+                if (amount != null && amount > BigDecimal("100")) {
+                    if (upperLimit == null || amount <= upperLimit.add(BigDecimal("5"))) {
+                        return amount
+                    }
+                }
+            }
+        }
+
+        // Fallback: line-based scan for "electricity energy" keywords, then parse amounts
+        val lines = text.lines().map { it.trim() }.filter { it.isNotEmpty() }
+        val candidates = mutableListOf<BigDecimal>()
+
+        fun lineLooksLikeEnergy(line: String): Boolean {
+            val upper = line.uppercase()
+            return (upper.contains("ELEKTRI") && upper.contains("ENERG")) ||
+                   (upper.contains("ЕЛЕКТРИ") && upper.contains("ЕНЕРГ")) ||
+                   upper.contains("A+B")
+        }
+
+        fun extractAmountsFromLine(line: String): List<BigDecimal> {
+            val results = mutableListOf<BigDecimal>()
+            val matches = amountRegex.findAll(line)
+            for (match in matches) {
+                val amount = parseAmount(match.value)
+                if (amount != null && amount > BigDecimal("100")) {
+                    results.add(amount)
+                }
+            }
+            return results
+        }
+
+        for (i in lines.indices) {
+            val line = lines[i]
+            if (!lineLooksLikeEnergy(line)) continue
+            if (line.contains("kWh", ignoreCase = true)) continue
+
+            candidates.addAll(extractAmountsFromLine(line))
+
+            if (i + 1 < lines.size && candidates.isEmpty()) {
+                candidates.addAll(extractAmountsFromLine(lines[i + 1]))
+            }
+        }
+
+        val filtered = if (upperLimit != null) {
+            candidates.filter { it <= upperLimit.add(BigDecimal("5")) }
+        } else {
+            candidates
+        }
+
+        return filtered.maxOrNull() ?: candidates.maxOrNull()
     }
 
 
@@ -772,12 +866,26 @@ object EpsParser {
 
     private fun parseAmount(amountString: String?): BigDecimal? {
         if (amountString == null) return null
-        val cleanString = amountString
-            .replace(".", "")
-            .replace(",", ".")
+        val raw = amountString
+            .replace("\u00A0", " ")
             .trim()
+
+        if (raw.isEmpty()) return null
+
+        val clean = when {
+            // Both separators present -> assume "." thousands and "," decimal
+            raw.contains(",") && raw.contains(".") -> raw.replace(".", "").replace(",", ".")
+            // Comma only -> Serbian decimal
+            raw.contains(",") -> raw.replace(",", ".")
+            // Dot only -> could be decimal or thousands
+            raw.contains(".") -> {
+                if (Regex("""\.\d{2}$""").containsMatchIn(raw)) raw else raw.replace(".", "")
+            }
+            else -> raw
+        }
+
         return try {
-            BigDecimal(cleanString)
+            BigDecimal(clean.replace(" ", ""))
         } catch (e: NumberFormatException) {
             null
         }

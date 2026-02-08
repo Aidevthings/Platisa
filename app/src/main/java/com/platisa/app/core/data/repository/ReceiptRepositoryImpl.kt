@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import javax.inject.Inject
 
 class ReceiptRepositoryImpl @Inject constructor(
@@ -65,6 +66,12 @@ class ReceiptRepositoryImpl @Inject constructor(
 
     override suspend fun getReceiptById(id: Long): Receipt? {
         return receiptDao.getReceiptById(id)?.toDomain()
+    }
+
+    override fun observeReceiptById(id: Long): Flow<Receipt?> {
+        return receiptDao.getReceiptByIdFlow(id).map { entity ->
+            entity?.toDomain()
+        }
     }
 
     override suspend fun getReceiptByInvoiceNumber(invoiceNumber: String): Receipt? {
@@ -328,7 +335,11 @@ class ReceiptRepositoryImpl @Inject constructor(
      */
     private suspend fun syncPaidStatusToCloud(receipt: Receipt, isPaid: Boolean? = null) {
         try {
-            val isActuallyPaid = isPaid ?: (receipt.paymentStatus == com.platisa.app.core.domain.model.PaymentStatus.PAID)
+            val statusToSync = if (isPaid != null) {
+                if (isPaid) com.platisa.app.core.domain.model.PaymentStatus.PAID else com.platisa.app.core.domain.model.PaymentStatus.UNPAID
+            } else {
+                receipt.paymentStatus
+            }
             val externalId = receipt.externalId
             
             // 🔍 DEBUG: Log all relevant fields
@@ -337,36 +348,38 @@ class ReceiptRepositoryImpl @Inject constructor(
             android.util.Log.d("ReceiptRepository", "🔍 External ID: $externalId")
             android.util.Log.d("ReceiptRepository", "🔍 Original Source: ${receipt.originalSource}")
             android.util.Log.d("ReceiptRepository", "🔍 Merchant: ${receipt.merchantName}")
-            android.util.Log.d("ReceiptRepository", "🔍 Is Paid: $isActuallyPaid")
+            android.util.Log.d("ReceiptRepository", "🔍 Status: $statusToSync")
             android.util.Log.d("ReceiptRepository", "🔍 Metadata: ${receipt.metadata}")
             
-            // UNIVERSAL SHARING LOGIC: 
-            // 1. If it's a Gmail receipt, sync to that Gmail's shared folder.
-            // 2. If it's Manual/Camera, sync to the Main User's folder (fallback).
-            var email = receipt.originalSource
-            
-            android.util.Log.d("ReceiptRepository", "🔍 Step 1 - Raw email from originalSource: $email")
-            
-            // Check if source is a valid email (simple check)
-            if (email == "Manual" || email == "Camera" || email == "GMAIL" || email == "CAMERA" || !email.contains("@")) {
-                val firebaseEmail = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.email
-                android.util.Log.d("ReceiptRepository", "🔍 Step 2 - Not an email, falling back to Firebase: $firebaseEmail")
-                email = firebaseEmail ?: ""
-            }
+            val email = resolveSyncEmail(receipt)
+            android.util.Log.d("ReceiptRepository", "🔍 Resolved email: $email")
 
-            if (email.isNotBlank() && !externalId.isNullOrBlank()) {
+            if (!email.isNullOrBlank() && !externalId.isNullOrBlank()) {
                 // FORCE LOWERCASE: Firestore IDs are case sensitive, we use lowercase standardization
                 val normalizedEmail = email.lowercase()
                 android.util.Log.d("ReceiptRepository", "☁️ SAVING to Firestore: shared_receipts/$normalizedEmail/receipts/$externalId")
-                android.util.Log.d("ReceiptRepository", "☁️ Syncing SHARED Paid Status ($isActuallyPaid) for $normalizedEmail / $externalId")
-                firestoreRepository.savePaidStatus(normalizedEmail, externalId, isActuallyPaid)
+                android.util.Log.d("ReceiptRepository", "☁️ Syncing SHARED Status ($statusToSync) for $normalizedEmail / $externalId")
+                firestoreRepository.saveReceiptStatus(normalizedEmail, externalId, statusToSync)
             } else {
-                android.util.Log.w("ReceiptRepository", "⚠️ SKIPPED SYNC: email='$email' (blank=${email.isBlank()}), externalId='$externalId' (null/blank=${externalId.isNullOrBlank()})")
+                android.util.Log.w("ReceiptRepository", "⚠️ SKIPPED SYNC: email='$email' (blank=${email.isNullOrBlank()}), externalId='$externalId' (null/blank=${externalId.isNullOrBlank()})")
             }
             android.util.Log.d("ReceiptRepository", "🔍 =====================================================")
         } catch (e: Exception) {
             android.util.Log.e("ReceiptRepository", "⚠️ Failed to sync paid status to cloud: ${e.message}")
         }
+    }
+
+    private fun resolveSyncEmail(receipt: Receipt): String? {
+        var email = receipt.originalSource
+        android.util.Log.d("ReceiptRepository", "🔍 Step 1 - Raw email from originalSource: $email")
+        
+        // Check if source is a valid email (simple check)
+        if (email == "Manual" || email == "Camera" || email == "GMAIL" || email == "CAMERA" || !email.contains("@")) {
+            val firebaseEmail = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.email
+            android.util.Log.d("ReceiptRepository", "🔍 Step 2 - Not an email, falling back to Firebase: $firebaseEmail")
+            email = firebaseEmail ?: ""
+        }
+        return email
     }
 
 
@@ -630,6 +643,20 @@ class ReceiptRepositoryImpl @Inject constructor(
         firestoreRepository.deleteAllPaidStatuses(sourceEmail)
     }
 
+    override suspend fun tryAcquireProcessingLock(receipt: Receipt): Boolean {
+        val email = resolveSyncEmail(receipt)
+        val externalId = receipt.externalId
+        if (email.isNullOrBlank() || externalId.isNullOrBlank()) return false
+        return firestoreRepository.tryAcquireProcessingLock(email, externalId)
+    }
+
+    override suspend fun releaseProcessingLock(receipt: Receipt): Boolean {
+        val email = resolveSyncEmail(receipt)
+        val externalId = receipt.externalId
+        if (email.isNullOrBlank() || externalId.isNullOrBlank()) return false
+        return firestoreRepository.releaseProcessingLock(email, externalId)
+    }
+
     override suspend fun insertReceipts(receipts: List<Receipt>): List<Long> {
         android.util.Log.d("ReceiptRepository", "=== GRUPNO UMETANJE ${receipts.size} RAČUNA ===")
         
@@ -687,14 +714,19 @@ class ReceiptRepositoryImpl @Inject constructor(
 
     override suspend fun startRealTimeSync() {
         android.util.Log.d("ReceiptRepository", "⚡ Starting REAL-TIME Sync...")
-        
-        val currentUserEmail = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.email?.lowercase()
-        val connected = secureStorage.getConnectedAccounts().map { it.lowercase() }
-        
-        val allAccounts = (connected + listOfNotNull(currentUserEmail)).distinct()
-        
 
-        
+        var allAccounts: List<String>
+        while (true) {
+            val currentUserEmail = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.email?.lowercase()
+            val connected = secureStorage.getConnectedAccounts().map { it.lowercase() }
+            allAccounts = (connected + listOfNotNull(currentUserEmail)).distinct()
+
+            if (allAccounts.isNotEmpty()) break
+
+            android.util.Log.d("ReceiptRepository", "⚡ No accounts yet. Waiting to start real-time sync...")
+            delay(2000)
+        }
+
         android.util.Log.d("ReceiptRepository", "⚡ Listening for updates on: $allAccounts")
 
         // AUTO-REPAIR on Sync Start: Fixes existing bad IDs
@@ -705,45 +737,63 @@ class ReceiptRepositoryImpl @Inject constructor(
         }
 
         kotlinx.coroutines.coroutineScope {
-            // SHARED STATE: Map of Email -> Set of Paid IDs
-            val paidStateMap = java.util.concurrent.ConcurrentHashMap<String, Set<String>>()
+            // SHARED STATE: Map of Email -> Map<ExternalId, PaymentStatus>
+            val statusStateMap = java.util.concurrent.ConcurrentHashMap<String, Map<String, com.platisa.app.core.domain.model.PaymentStatus>>()
             // Initial empty state for all accounts
-            allAccounts.forEach { paidStateMap[it] = emptySet() }
+            allAccounts.forEach { statusStateMap[it] = emptyMap() }
             
             val updateMutex = kotlinx.coroutines.sync.Mutex()
 
             allAccounts.forEach { email ->
                 launch {
                     try {
-                        firestoreRepository.observePaidReceipts(email).collect { paidIds ->
+                        firestoreRepository.observeReceiptStatuses(email).collect { statusMap ->
                             updateMutex.lock()
                             try {
-                                android.util.Log.d("ReceiptRepository", "⚡ Update received for $email: ${paidIds.size} paid bills")
+                                android.util.Log.d("ReceiptRepository", "⚡ Update received for $email: ${statusMap.size} receipts")
                                 // 1. Update State
-                                paidStateMap[email] = paidIds.toSet()
+                                statusStateMap[email] = statusMap
 
-                                // 2. Calculate UNION of ALL known paid bills (Global Truth)
-                                val unionPaidIds = paidStateMap.values.flatten().toSet()
+                                // 2. Calculate UNION of ALL known statuses (Global Truth)
+                                val unionPaidIds = statusStateMap.values
+                                    .flatMap { it.filterValues { status -> status == com.platisa.app.core.domain.model.PaymentStatus.PAID }.keys }
+                                    .toSet()
+                                val unionProcessingIds = statusStateMap.values
+                                    .flatMap { it.filterValues { status -> status == com.platisa.app.core.domain.model.PaymentStatus.PROCESSING }.keys }
+                                    .toSet()
+                                    .minus(unionPaidIds)
                                 
                                 // 3. Mark UNION as PAID (Global Update)
                                 if (unionPaidIds.isNotEmpty()) {
                                     receiptDao.markAsPaid(unionPaidIds.toList())
                                 }
 
+                                // 3b. Mark UNION as PROCESSING (without downgrading PAID)
+                                if (unionProcessingIds.isNotEmpty()) {
+                                    receiptDao.markAsProcessing(unionProcessingIds.toList())
+                                }
+
                                 // 4. SAFE UNMARKING (The "Total Disaster" Fix)
                                 // We iterate through EACH source we are tracking.
                                 // For a source (e.g. Wife), we check bills in DB that are:
                                 //    - Source = Wife
-                                //    - Status = PAID
+                                //    - Status = PAID/PROCESSING
                                 //    - AND NOT PRESENT IN THE **UNION**
-                                // This means: "Wife didn't pay it, Husband didn't pay it, NO ONE paid it." -> Safe to Unmark.
+                                // This means: "Wife didn't pay it, Husband didn't pay it, NO ONE paid/processing it." -> Safe to Unmark.
                                 
                                 allAccounts.forEach { sourceEmail -> 
                                     // Get all bills in DB that claim to be PAID and from this Source
                                     val dbPaidIds = receiptDao.getPaidExternalIdsBySource(sourceEmail)
+                                    val dbProcessingIds = receiptDao.getProcessingExternalIdsBySource(sourceEmail)
                                     
                                     // Find bills that are in DB but NOT in the Global Union
-                                    val toUnmark = dbPaidIds.filter { !unionPaidIds.contains(it) }
+                                    val toUnmarkPaid = dbPaidIds.filter { 
+                                        !unionPaidIds.contains(it) && !unionProcessingIds.contains(it) 
+                                    }
+                                    val toUnmarkProcessing = dbProcessingIds.filter { 
+                                        !unionPaidIds.contains(it) && !unionProcessingIds.contains(it) 
+                                    }
+                                    val toUnmark = (toUnmarkPaid + toUnmarkProcessing).distinct()
                                     
                                     if (toUnmark.isNotEmpty()) {
                                         android.util.Log.d("ReceiptRepository", "⚡ SYNC: Safely unmarking ${toUnmark.size} bills from $sourceEmail (Not in Union)")

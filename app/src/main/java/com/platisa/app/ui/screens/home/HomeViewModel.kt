@@ -196,10 +196,6 @@ class HomeViewModel @Inject constructor(
         fetchLiveRate()
         checkCameraAvatar()
         
-        // Start Real-time Sync for Shared Bills
-        viewModelScope.launch {
-            repository.startRealTimeSync()
-        }
     }
 
     private fun checkCameraAvatar() {
@@ -257,6 +253,7 @@ class HomeViewModel @Inject constructor(
     }
 
     fun setConnectedAccount(email: String) {
+        secureStorage.addConnectedAccount(email)
         checkConnectedAccount()
     }
 

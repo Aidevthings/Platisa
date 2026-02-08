@@ -62,7 +62,11 @@ class MigrationManager @Inject constructor(
                 }
                 
                 if (sourceEmail.isNotBlank()) {
-                     firestoreRepository.savePaidStatus(sourceEmail.lowercase(), receipt.externalId!!, true)
+                     firestoreRepository.saveReceiptStatus(
+                         sourceEmail.lowercase(),
+                         receipt.externalId!!,
+                         com.platisa.app.core.domain.model.PaymentStatus.PAID
+                     )
                      migratedCount++
                 }
             }

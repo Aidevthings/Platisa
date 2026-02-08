@@ -18,8 +18,8 @@ android {
             applicationId = "com.platisa.app"
             minSdk = 26
             targetSdk = 35
-            versionCode = 14
-            versionName = "1.6.5"
+            versionCode = 15
+            versionName = "1.6.6"
     
             testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
             vectorDrawables {

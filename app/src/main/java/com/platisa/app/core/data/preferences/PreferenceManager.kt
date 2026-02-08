@@ -26,6 +26,7 @@ class PreferenceManager @Inject constructor(
         // Theme preference
         private const val KEY_IS_DARK_THEME = "is_dark_theme"
         private const val KEY_SPLASH_SCREEN_STYLE = "splash_screen_style"
+        private const val KEY_ANALYTICS_CHART_TYPE = "analytics_chart_type"
     }
 
     var isFirstLaunch: Boolean
@@ -93,6 +94,10 @@ class PreferenceManager @Inject constructor(
     var splashScreenStyle: String
         get() = prefs.getString(KEY_SPLASH_SCREEN_STYLE, "") ?: ""
         set(value) = prefs.edit().putString(KEY_SPLASH_SCREEN_STYLE, value).apply()
+
+    var analyticsChartType: String
+        get() = prefs.getString(KEY_ANALYTICS_CHART_TYPE, "LINE") ?: "LINE"
+        set(value) = prefs.edit().putString(KEY_ANALYTICS_CHART_TYPE, value).apply()
 
     private val _themeFlow = kotlinx.coroutines.flow.MutableStateFlow(isDarkTheme)
     val themeFlow: kotlinx.coroutines.flow.StateFlow<Boolean> = _themeFlow

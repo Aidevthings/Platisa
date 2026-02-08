@@ -632,6 +632,13 @@ fun TutorialOverlay(
                 iconColor = blue
             ),
             TutorialStep(
+                title = "Račun sa Nepovezanog Emaila",
+                description = "Ako želite da Platiša prepozna račun koji je stigao na Gmail nalog koji NIJE povezan, prosledite taj email na nalog koji jeste povezan. Naslov poruke obavezno treba da sadrži reč \"Racun\" ili \"Рачун\".",
+                targetId = "gmail_tip",
+                icon = Icons.Default.Email,
+                iconColor = blue
+            ),
+            TutorialStep(
                 title = "Pomoć Uvek Dostupna",
                 description = "Kliknite na ovu ikonicu bilo kada da ponovo vidite ovaj tutorial.",
                 targetId = "help_icon",

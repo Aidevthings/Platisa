@@ -11,7 +11,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
 import javax.inject.Inject
 
 @HiltViewModel
@@ -170,8 +172,11 @@ class BillDetailsViewModel @Inject constructor(
     private val _receiptItems = MutableStateFlow<List<com.platisa.app.core.domain.model.ReceiptItem>>(emptyList())
     val receiptItems: StateFlow<List<com.platisa.app.core.domain.model.ReceiptItem>> = _receiptItems.asStateFlow()
 
+    private var receiptJob: Job? = null
+
     fun loadBillDetails(billId: String) {
-        viewModelScope.launch {
+        receiptJob?.cancel()
+        receiptJob = viewModelScope.launch {
             try {
                 // Refresh settings
                 _currency.value = secureStorage.getCurrency()
@@ -183,9 +188,12 @@ class BillDetailsViewModel @Inject constructor(
                     return@launch
                 }
 
-                // Load receipt
-                val originalReceipt = receiptRepository.getReceiptById(receiptId)
-                if (originalReceipt != null) {
+                receiptRepository.observeReceiptById(receiptId).collect { originalReceipt ->
+                    if (originalReceipt == null) {
+                        _billDetails.value = BillDetailsState.Error("Bill not found")
+                        return@collect
+                    }
+
                     val currentCurrency = _currency.value
                     val rate = _conversionRate.value
                     
@@ -220,12 +228,7 @@ class BillDetailsViewModel @Inject constructor(
                     var isDebtPartiallyPaid = false
                     var localUnpaidSum = 0.0
                     var billDebt = 0.0
-                    
-     
-     
-                    // 2. DEBT SAFETY CHECK (Merchant Agnostic):
-                    // Compare "Previous Debt" from the bill vs "Unpaid Local Bills".
-                    
+
                     if (receipt.currentMonthAmount != null || receipt.previousDebtAmount != null) {
                         // Priority 1: Use explicit Previous Debt field if available (Most accurate)
                         if (receipt.previousDebtAmount != null && receipt.previousDebtAmount > java.math.BigDecimal.ZERO) {
@@ -294,8 +297,6 @@ class BillDetailsViewModel @Inject constructor(
                         } else electricityBaseCost
                     } else null
 
-                    val discountDeadline = parseDeadlineFromMetadata(receipt.metadata)
-                    val discountThreshold = parseDiscountThresholdFromMetadata(receipt.metadata)
                     val infostanDeadline = parseInfostanDeadlineFromMetadata(receipt.metadata)
                     
                     // Use electricity base cost (Page 2) if available, otherwise fallback to total current month (Page 1)
@@ -332,8 +333,6 @@ class BillDetailsViewModel @Inject constructor(
                     val items = receiptRepository.getReceiptItems(receiptId)
                     _receiptItems.value = items
                     android.util.Log.d("BillDetailsVM", "Loaded ${items.size} items for receipt $receiptId")
-                } else {
-                    _billDetails.value = BillDetailsState.Error("Bill not found")
                 }
             } catch (e: Exception) {
                 _billDetails.value = BillDetailsState.Error(e.message ?: "Unknown error")
@@ -350,6 +349,14 @@ class BillDetailsViewModel @Inject constructor(
                 val currentState = _billDetails.value
                 if (currentState is BillDetailsState.Success) {
                     val receipt = currentState.receipt
+                    
+                    // CLOUD PRE-CHECK: Acquire PROCESSING lock to avoid double payment
+                    val lockAcquired = receiptRepository.tryAcquireProcessingLock(receipt)
+                    if (!lockAcquired) {
+                        _saveQrStatus.value = SaveQrStatus.Error("Račun je već plaćen ili je u obradi na drugom uređaju.")
+                        com.platisa.app.core.common.SnackbarManager.showMessage("Račun je već plaćen ili je u obradi na drugom uređaju.")
+                        return@launch
+                    }
 
                     // SAFEGUARD: Delete any existing saved QR before saving a new one
                     // This prevents orphaned QR files if user somehow triggers save again
@@ -396,6 +403,11 @@ class BillDetailsViewModel @Inject constructor(
                     _saveQrStatus.value = SaveQrStatus.Error("No bill data available")
                 }
             } catch (e: Exception) {
+                // Best-effort release of processing lock if something failed before local update
+                val currentState = _billDetails.value
+                if (currentState is BillDetailsState.Success) {
+                    receiptRepository.releaseProcessingLock(currentState.receipt)
+                }
                 _saveQrStatus.value = SaveQrStatus.Error(e.message ?: "Failed to save QR code")
             }
         }

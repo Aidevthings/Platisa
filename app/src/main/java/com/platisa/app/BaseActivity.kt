@@ -2,6 +2,7 @@ package com.platisa.app
 
 import android.content.Context
 import android.content.res.Configuration
+import android.view.MotionEvent
 import androidx.fragment.app.FragmentActivity
 
 /**
@@ -27,6 +28,17 @@ abstract class BaseActivity : FragmentActivity() {
         // Cap font scaling at MAX_FONT_SCALE to preserve layout integrity
         config.fontScale = config.fontScale.coerceAtMost(MAX_FONT_SCALE)
         super.attachBaseContext(newBase.createConfigurationContext(config))
+    }
+
+    override fun dispatchGenericMotionEvent(ev: MotionEvent): Boolean {
+        // Workaround for a Compose hover crash where ACTION_HOVER_EXIT isn't cleared.
+        // Consuming hover events prevents the crash on affected devices/input types.
+        return when (ev.actionMasked) {
+            MotionEvent.ACTION_HOVER_ENTER,
+            MotionEvent.ACTION_HOVER_MOVE,
+            MotionEvent.ACTION_HOVER_EXIT -> true
+            else -> super.dispatchGenericMotionEvent(ev)
+        }
     }
 }
 
