@@ -267,7 +267,7 @@ class ReceiptRepositoryImpl @Inject constructor(
     }
     
     // Helper to repair existing IDs
-    suspend fun repairReceiptIds() {
+    suspend fun repairReceiptIds() = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         android.util.Log.d("ReceiptRepository", "🔧 STARTING ID REPAIR...")
         val allReceipts = getAllReceipts().firstOrNull() ?: emptyList()
         var repairedCount = 0
@@ -372,6 +372,12 @@ class ReceiptRepositoryImpl @Inject constructor(
     private fun resolveSyncEmail(receipt: Receipt): String? {
         var email = receipt.originalSource
         android.util.Log.d("ReceiptRepository", "🔍 Step 1 - Raw email from originalSource: $email")
+        
+        // Prevent physical/fiscal scans from attempting cloud sync
+        if (email == "CAMERA_FISCAL" || email == "CAMERA_IPS") {
+            android.util.Log.d("ReceiptRepository", "☁️ Skipping cloud sync for physical receipt: $email")
+            return null
+        }
         
         // Check if source is a valid email (simple check)
         if (email == "Manual" || email == "Camera" || email == "GMAIL" || email == "CAMERA" || !email.contains("@")) {
@@ -712,7 +718,7 @@ class ReceiptRepositoryImpl @Inject constructor(
         return emptyList()
     }
 
-    override suspend fun startRealTimeSync() {
+    override suspend fun startRealTimeSync() = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         android.util.Log.d("ReceiptRepository", "⚡ Starting REAL-TIME Sync...")
 
         var allAccounts: List<String>

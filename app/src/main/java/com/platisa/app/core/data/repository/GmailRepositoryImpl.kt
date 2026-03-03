@@ -27,17 +27,21 @@ class GmailRepositoryImpl @Inject constructor(
         val lastSync = secureStorage.getLastGmailSyncTimestamp(accountEmail)
         
         // Smart Lookback:
-        // 1. If we have a lastSync > 0, use it (Incremental Sync).
-        // 2. If lastSync == 0 (First Run), limit to last X days (default 90) to avoid scanning years of old bills.
-        // 3. If ignoreTimestamp is true (Manual Force Resync), scan everything (or we could limit this too, but let's assume 'Force' means all).
+        // 1. If we have a lastSync > 0 AND it's not in the future, use it (Incremental Sync).
+        // 2. If lastSync == 0 (First Run) OR lastSync is in the future, limit to last X days (default 90).
+        // 3. If ignoreTimestamp is true (Manual Force Resync), scan everything.
+        val currentTimeSeconds = System.currentTimeMillis() / 1000
         val afterTimestamp = if (!ignoreTimestamp) {
-            if (lastSync > 0) {
+            if (lastSync > 0 && lastSync <= currentTimeSeconds) {
                 lastSync
             } else {
-                // First run: Default to 90 days ago if no specific lookback requested
+                if (lastSync > currentTimeSeconds) {
+                    android.util.Log.w("GmailRepo", "⚠️ Future timestamp detected ($lastSync)! Resetting to lookback period.")
+                }
+                // First run or recovery: Default to 90 days ago if no specific lookback requested
                 val daysToLookBack = lookbackDays ?: 90
                 val lookbackInSeconds = daysToLookBack.toLong() * 24 * 60 * 60
-                (System.currentTimeMillis() / 1000) - lookbackInSeconds
+                currentTimeSeconds - lookbackInSeconds
             }
         } else {
             null
@@ -118,10 +122,9 @@ class GmailRepositoryImpl @Inject constructor(
         }
         
         // Update last sync timestamp for THIS SPECIFIC account
-        if (messages.isNotEmpty()) {
-            android.util.Log.d("GmailRepo", "Updating last sync timestamp for account: $accountEmail")
-            secureStorage.setLastGmailSyncTimestamp(accountEmail, System.currentTimeMillis() / 1000)
-        }
+        // We update even if 0 messages found to "ratchet" the timestamp forward
+        android.util.Log.d("GmailRepo", "Updating last sync timestamp for account: $accountEmail")
+        secureStorage.setLastGmailSyncTimestamp(accountEmail, System.currentTimeMillis() / 1000)
         
         android.util.Log.d("GmailRepo", "Total files downloaded: ${files.size}")
         return files

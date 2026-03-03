@@ -6,6 +6,8 @@ import com.platisa.app.core.domain.repository.ReceiptRepository
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 
 @Singleton
 class MigrationManager @Inject constructor(
@@ -14,7 +16,7 @@ class MigrationManager @Inject constructor(
     private val preferenceManager: PreferenceManager
 ) {
 
-    suspend fun performUniversalSharingMigration() {
+    suspend fun performUniversalSharingMigration() = withContext(Dispatchers.IO) {
         android.util.Log.d("MigrationManager", "🏁 performUniversalSharingMigration() CALLED")
         
         // Version 2: Force re-migration due to lowercase email fix
@@ -23,7 +25,7 @@ class MigrationManager @Inject constructor(
         
         if (lastMigrationVersion >= CURRENT_MIGRATION_VERSION) {
             android.util.Log.d("MigrationManager", "✅ Universal Sharing Migration already complete (v$lastMigrationVersion)")
-            return
+            return@withContext
         }
 
         android.util.Log.d("MigrationManager", "🚀 Starting Universal Sharing Migration v$CURRENT_MIGRATION_VERSION (was v$lastMigrationVersion)...")

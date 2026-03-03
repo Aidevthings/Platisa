@@ -16,14 +16,8 @@ service cloud.firestore {
     // Allow any authenticated user to read/write shared receipts
     // This allows User A (main) to write status for User B (secondary) 
     // provided they know the source email.
-    match /shared_receipts/{sourceEmail}/{document=**} {
+    match /shared_receipts/{sourceEmail}/receipts/{document=**} {
       allow read, write: if request.auth != null;
-    }
-
-    // FEEDBACK: Allow anyone to submit feedback
-    match /feedback/{document=**} {
-      allow create: if true;
-      allow read, update, delete: if false; // Only allow creation
     }
   }
 }

@@ -33,6 +33,8 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -107,6 +109,21 @@ fun MainScreen(
     LaunchedEffect(Unit) {
         SnackbarManager.messages.collect { message ->
             snackbarHostState.showSnackbar(message)
+        }
+    }
+    
+    val isUpdateDownloaded by MainActivity.isUpdateDownloaded.collectAsState()
+    
+    LaunchedEffect(isUpdateDownloaded) {
+        if (isUpdateDownloaded) {
+            val result = snackbarHostState.showSnackbar(
+                message = "Nova verzija Platisa aplikacije je spremna.",
+                actionLabel = "Instaliraj",
+                duration = SnackbarDuration.Indefinite
+            )
+            if (result == SnackbarResult.ActionPerformed) {
+                MainActivity.inAppUpdateHelper?.completeUpdate()
+            }
         }
     }
     

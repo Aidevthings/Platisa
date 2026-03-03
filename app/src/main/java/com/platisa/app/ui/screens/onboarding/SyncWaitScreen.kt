@@ -5,11 +5,18 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
@@ -121,11 +128,12 @@ fun SyncWaitScreen(
     }
 
     // Logic to proceed
-    // FIX: Wait for FULL sync completion (or timeout). Do not exit early just because we have receipts (receiptCount > 0),
-    // because existing users adding a 2nd account already have receipts. We want to show them the new scan.
+    // If sync completes successfully, auto-navigate.
+    // If it fails or times out, we still want to let them in but maybe show a button.
     LaunchedEffect(isSyncComplete, timeoutTriggered) {
-        if (isSyncComplete || timeoutTriggered) {
-            if (!timeoutTriggered) delay(2000) // Show success briefly if not timeout
+        if ((isSyncComplete || timeoutTriggered) && !syncStatus.startsWith("Greška")) {
+            // Success or Timeout (Fail Open)
+            if (!timeoutTriggered) delay(1500) // Show success briefly
             
             navController.navigate(Screen.Home.route) {
                 popUpTo(Screen.SyncWait.route) { inclusive = true }
@@ -137,62 +145,79 @@ fun SyncWaitScreen(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
-        // 1. Background Image (Splash Screen)
+        // 1. Background Image
         androidx.compose.foundation.Image(
-            painter = androidx.compose.ui.res.painterResource(id = com.platisa.app.R.drawable.splash_background),
+            painter = androidx.compose.ui.res.painterResource(id = com.platisa.app.R.drawable.pozadina),
             contentDescription = null,
             modifier = Modifier.fillMaxSize(),
             contentScale = androidx.compose.ui.layout.ContentScale.Crop
         )
 
-        // 2. Dark Overlay - REMOVED per user request for layer "just under text"
-        // But keeping it very subtle (0.1f) for overall contrast if needed, or removing entirely.
-        // User asked for "layer just under the text". So let's wrap the text container.
-        
-        // Unified "Popup" Card Style to match Login/ScanTimeframe overlays
-        androidx.compose.material3.Card(
-            colors = androidx.compose.material3.CardDefaults.cardColors(
-                containerColor = Color.Black.copy(alpha = 0.9f)
-            ),
-            shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
-            border = androidx.compose.foundation.BorderStroke(1.dp, NeonCyan),
+        // 2. Overlay
+        Box(
             modifier = Modifier
-                .padding(horizontal = 32.dp)
-                .wrapContentSize()
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.6f))
+        )
+
+        // 3. Content
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.padding(32.dp)
         ) {
-            Column(
-                modifier = Modifier.padding(32.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                // Pulse Animation or Loader - Resized to 48.dp to match other screens
+            if (!isSyncComplete && !timeoutTriggered) {
                 CircularProgressIndicator(
                     color = NeonCyan,
-                    modifier = Modifier.size(48.dp),
+                    modifier = Modifier.size(64.dp),
                     strokeWidth = 4.dp
                 )
-                
-                Spacer(modifier = Modifier.height(24.dp))
-                
-                // Main Status Text
-                Text(
-                    text = if (newReceiptsCount > 0) "Pronađeno računa: $newReceiptsCount" else syncStatus,
-                    fontSize = 20.sp, // Slightly reduced from 24sp for better alignment
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                Spacer(modifier = Modifier.height(32.dp))
+            } else if (syncStatus.startsWith("Završeno") || timeoutTriggered) {
+                Icon(
+                    imageVector = Icons.Default.CheckCircle,
+                    contentDescription = null,
+                    tint = NeonCyan,
+                    modifier = Modifier.size(64.dp)
                 )
-                
+                Spacer(modifier = Modifier.height(32.dp))
+            }
+
+            Text(
+                text = if (timeoutTriggered && !isSyncComplete) "Sinhronizacija traje duže nego obično..." else syncStatus,
+                color = Color.White,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center
+            )
+
+            if (newReceiptsCount > 0) {
+                Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "Ovo može potrajati nekoliko trenutaka",
-                    fontSize = 14.sp,
-                    color = Color.White.copy(alpha = 0.7f),
-                    modifier = Modifier.padding(top = 12.dp),
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    text = "Pronađeno: $newReceiptsCount",
+                    color = NeonCyan,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium
                 )
             }
-        }
+
+            // Fail-safe button if stuck or error
+            if (isSyncComplete || timeoutTriggered) {
+                Spacer(modifier = Modifier.height(48.dp))
+                Button(
+                    onClick = {
+                        navController.navigate(Screen.Home.route) {
+                            popUpTo(Screen.SyncWait.route) { inclusive = true }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = NeonCyan),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Nastavi", color = Color.Black, fontWeight = FontWeight.Bold)
+                }
+            }
         }
     }
+}
 
 

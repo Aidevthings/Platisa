@@ -11,6 +11,11 @@ import com.platisa.app.ui.MainScreen
 import com.platisa.app.ui.theme.PlatisaTheme
 import dagger.hilt.android.AndroidEntryPoint
 import timber.log.Timber
+import androidx.activity.result.contract.ActivityResultContracts
+import com.platisa.app.core.common.update.InAppUpdateManager
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.lifecycle.Lifecycle
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -27,7 +32,23 @@ class MainActivity : BaseActivity() {
     
     private val splashViewModel: com.platisa.app.ui.screens.splash.SplashViewModel by viewModels()
     
+    private var inAppUpdateManager: InAppUpdateManager? = null
+
+    private val updateLauncher = registerForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode != android.app.Activity.RESULT_OK) {
+            Timber.d("Update flow failed/canceled. Result code: ${result.resultCode}")
+        }
+    }
+
     companion object {
+        private val _isUpdateDownloaded = MutableStateFlow(false)
+        val isUpdateDownloaded: StateFlow<Boolean> = _isUpdateDownloaded.asStateFlow()
+
+        var inAppUpdateHelper: InAppUpdateManager? = null
+            private set
+
         private val _pendingBillId = MutableStateFlow<Long?>(null)
         val pendingBillId: StateFlow<Long?> = _pendingBillId.asStateFlow()
         
@@ -53,6 +74,18 @@ class MainActivity : BaseActivity() {
         
         super.onCreate(savedInstanceState)
         
+        inAppUpdateManager = InAppUpdateManager(this)
+        inAppUpdateHelper = inAppUpdateManager
+
+        lifecycleScope.launch {
+            lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                inAppUpdateManager?.isUpdateDownloaded?.collect { downloaded ->
+                    _isUpdateDownloaded.value = downloaded
+                }
+            }
+        }
+        inAppUpdateManager?.checkForUpdate(updateLauncher)
+
         try {
             com.platisa.app.core.common.DiagnosticsHelper.logAppSignature(this)
         } catch (e: Exception) {
@@ -88,6 +121,17 @@ class MainActivity : BaseActivity() {
             _pendingSettingsOpen.value = true
              android.util.Log.d("MainActivity", "Deep link to settings")
         }
+    }
+    
+    override fun onResume() {
+        super.onResume()
+        inAppUpdateManager?.resumeUpdate()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        inAppUpdateManager?.onDestroy()
+        inAppUpdateHelper = null
     }
 }
 

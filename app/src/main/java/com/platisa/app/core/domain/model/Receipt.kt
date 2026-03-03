@@ -44,7 +44,11 @@ data class Receipt(
     val anomalyMessage: String? = null
 ) {
     val category: BillCategory
-        get() = BillCategorizer.categorize(merchantName)
+        get() = if (originalSource == "CAMERA_FISCAL") {
+            BillCategory.FISCAL
+        } else {
+            BillCategorizer.categorize(merchantName)
+        }
 }
 
 enum class SyncStatus {

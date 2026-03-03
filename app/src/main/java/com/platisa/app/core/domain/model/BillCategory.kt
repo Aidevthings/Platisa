@@ -15,7 +15,8 @@ enum class BillCategory(val icon: ImageVector, val color: Color, val displayName
     PHARMACY(Icons.Default.LocalHospital, Color(0xFFE91E63), "Apoteka"),
     RESTAURANT(Icons.Default.Restaurant, Color(0xFFFF9800), "Restorani"), // Orange
     UTILITIES(Icons.Default.LocationCity, CyberCyan, "Komunalije"),
-    OTHER(Icons.Default.Receipt, MatrixGreen, "Ostalo")
+    OTHER(Icons.Default.Receipt, MatrixGreen, "Ostalo"),
+    FISCAL(Icons.Default.Storefront, MatrixGreen, "Fiskalni Račun")
 }
 
 object BillCategorizer {

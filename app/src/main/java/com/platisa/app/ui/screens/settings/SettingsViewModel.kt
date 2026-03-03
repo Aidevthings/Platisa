@@ -333,8 +333,8 @@ class SettingsViewModel @Inject constructor(
                 }
             }
             
-            // 3. Reset Timestamp to 0 to trigger fresh sync
-            secureStorage.setLastGmailSyncTimestamp(0)
+            // 3. Reset all Gmail sync timestamps
+            secureStorage.clearSyncData()
             
             android.util.Log.d("SettingsViewModel", "✅ Gmail data cleared. Triggering re-sync...")
             SnackbarManager.showMessage("Gmail sinhronizacija resetovana. Ručni unosi sačuvani.")
@@ -344,85 +344,6 @@ class SettingsViewModel @Inject constructor(
             
             // 5. Re-schedule periodic sync after this one finishes (or concurrently)
             scheduleGmailSync()
-        }
-    }
-
-    // ========== HARD RESET (Testing Only) ==========
-    private val _hardResetResult = MutableStateFlow<String?>(null)
-    val hardResetResult = _hardResetResult.asStateFlow()
-    
-    private val _isResetting = MutableStateFlow(false)
-    val isResetting = _isResetting.asStateFlow()
-    
-    /**
-     * Hard reset for testing purposes. Clears ALL data WITHOUT logging out.
-     * - Clears Firestore paid statuses
-     * - Resets per-account sync timestamps
-     * - Deletes all local receipts and EPS data
-     */
-    fun hardReset() {
-        viewModelScope.launch {
-            _isResetting.value = true
-            _hardResetResult.value = "⏳ Starting hard reset..."
-            
-            try {
-                // 0. Cancel any running syncs
-                workManager.cancelUniqueWork("GmailSync")
-                workManager.cancelUniqueWork("GmailSyncOneTime")
-                
-                // 1. Get all connected accounts
-                val accounts = secureStorage.getConnectedAccounts()
-                android.util.Log.d("SettingsViewModel", "🗑️ HARD RESET: Found ${accounts.size} accounts")
-                
-                // 2. Clear Firestore paid statuses for each account
-                accounts.forEach { email ->
-                    android.util.Log.d("SettingsViewModel", "🗑️ Clearing Firestore for: $email")
-                    firestoreRepository.deleteAllPaidStatuses(email)
-                }
-                _hardResetResult.value = "⏳ Firestore cleared..."
-                
-                // 3. Clear per-account sync timestamps
-                accounts.forEach { email ->
-                    secureStorage.setLastGmailSyncTimestamp(email, 0L)
-                }
-                // Also clear global timestamp
-                secureStorage.setLastGmailSyncTimestamp(0L)
-                _hardResetResult.value = "⏳ Sync timestamps reset..."
-                
-                // 4. Delete all local data
-                repository.deleteAllReceiptItems()
-                repository.deleteAllEpsData()
-                repository.deleteAllReceipts()
-                _hardResetResult.value = "⏳ Local database cleared..."
-                
-                // 5. Clear cache files
-                val cacheDir = context.cacheDir
-                cacheDir.listFiles()?.forEach { file ->
-                    try {
-                        if (file.isDirectory) file.deleteRecursively() else file.delete()
-                    } catch (_: Exception) {}
-                }
-                
-                android.util.Log.d("SettingsViewModel", "✅ HARD RESET COMPLETE")
-                _hardResetResult.value = "✅ Hard Reset Complete!\n" +
-                    "• Firestore paid statuses: CLEARED\n" +
-                    "• Sync timestamps: RESET\n" +
-                    "• Local receipts: DELETED\n" +
-                    "• Cache: CLEARED\n\n" +
-                    "⏳ Starting Fresh Scan..."
-                    
-                SnackbarManager.showMessage("Reset complete. Starting fresh scan...")
-                
-                // AUTO-START SYNC
-                // This ensures the user gets "fresh data" immediately as requested.
-                syncNow()
-                    
-            } catch (e: Exception) {
-                android.util.Log.e("SettingsViewModel", "❌ HARD RESET FAILED", e)
-                _hardResetResult.value = "❌ Error: ${e.message}"
-            } finally {
-                _isResetting.value = false
-            }
         }
     }
 

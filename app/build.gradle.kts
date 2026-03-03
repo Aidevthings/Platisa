@@ -18,8 +18,8 @@ android {
             applicationId = "com.platisa.app"
             minSdk = 26
             targetSdk = 35
-            versionCode = 15
-            versionName = "1.6.6"
+            versionCode = 16
+            versionName = "2.0"
     
             testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
             vectorDrawables {
@@ -174,8 +174,9 @@ dependencies {
     implementation("com.google.firebase:firebase-firestore-ktx")
     implementation("com.google.firebase:firebase-auth-ktx")
     
-    // --- Google Play Billing ---
+    // --- Google Play Billing & Updates ---
     implementation("com.android.billingclient:billing-ktx:6.1.0")
+    implementation("com.google.android.play:app-update-ktx:2.1.0")
 }
 
 

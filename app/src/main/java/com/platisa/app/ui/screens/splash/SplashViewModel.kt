@@ -43,6 +43,7 @@ class SplashViewModel @Inject constructor(
     }
 
     private fun checkStartDestination() {
+        val startTime = System.currentTimeMillis()
         viewModelScope.launch {
             // Run startup tasks in parallel with the splash delay
             val startupJob = launch {
@@ -57,6 +58,16 @@ class SplashViewModel @Inject constructor(
             
             val delayJob = launch {
                 kotlinx.coroutines.delay(3000) // Keep branding visible
+            }
+            
+            // GLOBAL FAIL-SAFE: If everything hangs (migration, auth, etc), 
+            // force transition after 8 seconds total.
+            val timeoutJob = launch {
+                kotlinx.coroutines.delay(8000)
+                if (_splashState.value == SplashState.Loading) {
+                    android.util.Log.w("SplashViewModel", "⚠️ SPLASH TIMEOUT REACHED! Forcing transition...")
+                    _splashState.value = SplashState.NavigateToLogin
+                }
             }
             
             // Wait for both to finish (or at least the delay)
@@ -84,6 +95,11 @@ class SplashViewModel @Inject constructor(
             } else {
                 _splashState.value = SplashState.NavigateToLogin
             }
+            
+            val duration = System.currentTimeMillis() - startTime
+            android.util.Log.i("SplashViewModel", "🏁 Startup sequence complete in ${duration}ms. Destination: ${_splashState.value}")
+            
+            timeoutJob.cancel() // Transition happened naturally
         }
     }
 }

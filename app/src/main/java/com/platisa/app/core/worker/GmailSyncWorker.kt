@@ -45,6 +45,7 @@ class GmailSyncWorker @AssistedInject constructor(
         val status = gms.isGooglePlayServicesAvailable(applicationContext)
         if (status != com.google.android.gms.common.ConnectionResult.SUCCESS) {
             android.util.Log.e("GmailSyncWorker", "❌ ABORTING: Google Play Services unavailable (Code: $status)")
+            showErrorNotification("Google Play servisi nisu dostupni (Kod: $status)")
             return Result.failure(workDataOf(KEY_ERROR_MESSAGE to "Google Play servisi nisu dostupni"))
         }
 

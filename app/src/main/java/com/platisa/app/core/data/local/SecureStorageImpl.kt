@@ -145,14 +145,25 @@ class SecureStorageImpl @Inject constructor(
         sharedPreferences.edit().putBoolean("onboarding_completed", completed).apply()
     }
     
+    override fun clearSyncData() {
+        val editor = sharedPreferences.edit()
+        sharedPreferences.all.keys.forEach { key ->
+            if (key.startsWith("last_gmail_sync")) {
+                editor.remove(key)
+            }
+        }
+        editor.apply()
+        android.util.Log.d("SecureStorage", "All Gmail sync timestamps cleared")
+    }
+
     override fun clearAllData() {
+        clearSyncData()
         sharedPreferences.edit()
             .remove("connected_accounts")
-            .remove("last_gmail_sync")
             .remove("auth_token")
             .remove("onboarding_completed") // Clear onboarding state on logout
             .apply()
-        android.util.Log.d("SecureStorage", "All user data cleared (accounts, sync timestamp, token)")
+        android.util.Log.d("SecureStorage", "All user data cleared (accounts, tokens, onboarding)")
     }
 }
 

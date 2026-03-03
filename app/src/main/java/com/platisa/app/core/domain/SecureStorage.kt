@@ -42,6 +42,9 @@ interface SecureStorage {
     fun isOnboardingCompleted(): Boolean
     fun setOnboardingCompleted(completed: Boolean)
     
+    // Wipe all sync-related timestamps
+    fun clearSyncData()
+    
     // Wipe all user data (for logout/reset)
     fun clearAllData()
 }
