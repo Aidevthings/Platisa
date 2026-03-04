@@ -16,7 +16,7 @@ enum class BillCategory(val icon: ImageVector, val color: Color, val displayName
     RESTAURANT(Icons.Default.Restaurant, Color(0xFFFF9800), "Restorani"), // Orange
     UTILITIES(Icons.Default.LocationCity, CyberCyan, "Komunalije"),
     OTHER(Icons.Default.Receipt, MatrixGreen, "Ostalo"),
-    FISCAL(Icons.Default.Storefront, MatrixGreen, "Fiskalni Račun")
+    FISCAL(Icons.Default.Storefront, MatrixGreen, "Ostalo")
 }
 
 object BillCategorizer {
@@ -126,6 +126,10 @@ object BillCategorizer {
             normalized.contains("КЛИНИКА") ||
             normalized.contains("LEKAR") ||
             normalized.contains("ЛЕКАР") ||
+            normalized.contains("APOTEKAR") ||
+            normalized.contains("IVANČIĆ") ||
+            normalized.contains("ИВАНЧИЋ") ||
+            normalized.contains("ФАРМ") ||
             normalized.contains("САНИТЕТ")) {
             return BillCategory.PHARMACY
         }
@@ -160,6 +164,9 @@ object BillCategorizer {
             normalized.contains("ПОСЛАСТИЧАРНИЦА") ||
             normalized.contains("McDonald") ||
             normalized.contains("KFC") ||
+            normalized.contains("BURGER KING") ||
+            normalized.contains("STARBUCKS") ||
+            normalized.contains("COFFEEDREAM") ||
             normalized.contains("WALTER")) {
             return BillCategory.RESTAURANT
         }
@@ -193,6 +200,16 @@ object BillCategorizer {
             normalized.contains("ТРГОВИНА") ||
             normalized.contains("TRGOVINU") ||
             normalized.contains("ТРГОВИНУ") ||
+            normalized.contains("GOMEX") ||
+            normalized.contains("ГОМЕX") ||
+            normalized.contains("AMAN") ||
+            normalized.contains("АМАН") ||
+            normalized.contains("SUNCE") ||
+            normalized.contains("СУНЦЕ") ||
+            normalized.contains("QUATTRO") ||
+            normalized.contains("TSV") ||
+            normalized.contains("PERSU") ||
+            normalized.contains("ПЕРСУ") ||
             normalized.contains("S.T.R.") ||      
             normalized.contains("С.Т.Р.") ||
             normalized.contains("STR ") ||

@@ -751,15 +751,10 @@ fun HomeScreen(
                             epsConsumption = epsDataMap[receipt.id]?.totalConsumption?.toInt(),
                             onNavigateToDetails = { 
                                 viewModel.vibrate(com.platisa.app.core.common.VibrationHelper.HapticType.LIGHT)
-                                when (receipt.category) {
-                                    com.platisa.app.core.domain.model.BillCategory.GROCERY,
-                                    com.platisa.app.core.domain.model.BillCategory.PHARMACY,
-                                    com.platisa.app.core.domain.model.BillCategory.RESTAURANT -> {
-                                        navController.navigate(Screen.FiscalReceiptDetails.createRoute(receipt.id))
-                                    }
-                                    else -> {
-                                        navController.navigate(Screen.BillDetails.createRoute(receipt.id.toString()))
-                                    }
+                                if (receipt.originalSource == "CAMERA_FISCAL") {
+                                    navController.navigate(Screen.FiscalReceiptDetails.createRoute(receipt.id))
+                                } else {
+                                    navController.navigate(Screen.BillDetails.createRoute(receipt.id.toString()))
                                 }
                             },
                             onConfirmPayment = { viewModel.markReceiptAsPaid(receipt.id) },

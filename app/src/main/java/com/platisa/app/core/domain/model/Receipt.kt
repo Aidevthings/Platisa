@@ -44,10 +44,13 @@ data class Receipt(
     val anomalyMessage: String? = null
 ) {
     val category: BillCategory
-        get() = if (originalSource == "CAMERA_FISCAL") {
-            BillCategory.FISCAL
-        } else {
-            BillCategorizer.categorize(merchantName)
+        get() {
+            val semantic = BillCategorizer.categorize(merchantName)
+            return if (originalSource == "CAMERA_FISCAL" && semantic == BillCategory.OTHER) {
+                BillCategory.FISCAL
+            } else {
+                semantic
+            }
         }
 }
 

@@ -70,6 +70,7 @@ class HomeViewModel @Inject constructor(
                         receipt.category == com.platisa.app.core.domain.model.BillCategory.OTHER
 
                 if (!isUtility) return@filter false
+                if (receipt.originalSource == "CAMERA_FISCAL") return@filter false
 
                 // Always show UNPAID and PROCESSING
                 if (receipt.paymentStatus != com.platisa.app.core.domain.model.PaymentStatus.PAID) {
